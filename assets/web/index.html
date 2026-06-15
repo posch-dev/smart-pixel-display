@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Pixel Dashboard — Eliah Posch</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo">
+      Smart Pixel Dashboard
+      <div class="logo-by">
+        <a href="https://github.com/posch-dev" target="_blank" rel="noopener">
+          <svg class="gh-icon" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>posch-dev
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <button id="power-btn" onclick="togglePower()" title="Turn Off Display">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v9"/>
+      <path d="M6.4 5.6A9 9 0 1 0 17.6 5.6"/>
+    </svg>
+  </button>
+
+  <div class="header-right">
+    <div id="status-pill">
+      <div class="dot"></div>
+      <span id="s-mode">—</span>
+      <span id="s-since" style="color:var(--muted)"></span>
+    </div>
+    <div class="accent-wrap">
+      <input type="color" id="accent-pick" value="#87a878" oninput="setAccent(this.value)" title="Accent color">
+    </div>
+    <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark">🌙</button>
+  </div>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('trigger')">Trigger</button>
+  <button class="tab-btn"        onclick="showTab('modules')">Panels</button>
+  <button class="tab-btn"        onclick="showTab('device')">Device</button>
+</div>
+
+<div id="tab-modules" class="tab-pane">
+<div class="pane-inner">
+
+<div class="card">
+  <div class="card-title">Clock</div>
+  <div class="row">
+    <div class="row-label">Enabled</div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="cl_enabled" onchange="save('clock','enabled',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Priority</div><div class="row-sub">Higher overrides lower modes</div></div>
+    <div class="row-right"><select id="prio-sel-clock" onchange="savePriority('clock',+this.value)"><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option><option value="4">Ultra</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-label">Brightness</div>
+    <div class="row-right" style="gap:10px">
+      <div id="cl_local_slider" class="slider-wrap">
+        <input type="range" id="cl_brightness" min="1" max="100" oninput="nxt(this,v=>v)" onchange="save('clock','brightness',+this.value)">
+        <span class="val">1</span>
+      </div>
+      <div class="use-global-wrap">
+        <span class="use-global-label">Global</span>
+        <label class="toggle"><input type="checkbox" id="cl_use_global" onchange="toggleUseGlobal('clock',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Blink Interval</div><div class="row-sub">Colon blink speed</div></div>
+    <div class="row-right"><div class="slider-wrap"><input type="range" id="cl_blink" min="0.5" max="3" step="0.1" oninput="nxt(this,v=>v+'s')" onchange="save('clock','blink_interval',+this.value)"><span class="val">2s</span></div></div>
+  </div>
+  <div class="row">
+    <div class="row-label">Color</div>
+    <div class="row-right"><input type="color" id="cl_color" onchange="save('clock','color',hexToRgb(this.value))"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Verse of Day</div>
+  <div class="row">
+    <div class="row-label">Enabled</div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="v_enabled" onchange="save('verse_of_day','enabled',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Priority</div></div>
+    <div class="row-right"><select id="prio-sel-verse_of_day" onchange="savePriority('verse_of_day',+this.value)"><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option><option value="4">Ultra</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Duration</div><div class="row-sub">Minutes shown per appearance</div></div>
+    <div class="row-right" style="gap:6px"><input type="number" id="v_duration" min="1" max="60" style="width:65px" onchange="save('verse_of_day','min_duration_s',+this.value*60)"><span style="font-size:12px;color:var(--muted)">min</span></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Probability</div><div class="row-sub">Chance to show per time window</div></div>
+    <div class="row-right"><div class="slider-wrap"><input type="range" id="v_prob" min="0" max="100" oninput="nxt(this,v=>v+'%')" onchange="save('verse_of_day','probability',this.value/100)"><span class="val">30%</span></div></div>
+  </div>
+  <div class="row">
+    <div class="row-label">Brightness</div>
+    <div class="row-right" style="gap:10px">
+      <div id="v_local_slider" class="slider-wrap">
+        <input type="range" id="v_brightness" min="1" max="100" oninput="nxt(this,v=>v)" onchange="save('verse_of_day','brightness',+this.value)">
+        <span class="val">100</span>
+      </div>
+      <div class="use-global-wrap">
+        <span class="use-global-label">Global</span>
+        <label class="toggle"><input type="checkbox" id="v_use_global" onchange="toggleUseGlobal('verse_of_day',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-label">Color</div>
+    <div class="row-right"><input type="color" id="v_color" onchange="save('verse_of_day','color',hexToRgb(this.value))"></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Active Hours</div><div class="row-sub">Restrict to an hour range</div></div>
+    <div class="row-right" style="gap:6px;flex-wrap:wrap;justify-content:flex-end">
+      <label class="toggle"><input type="checkbox" id="v_allhours" checked onchange="toggleHours(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      <span style="color:var(--muted);font-size:12px">All</span>
+      <div id="v_hour_range" style="display:none;align-items:center;gap:5px">
+        <input type="number" id="v_hour_from" min="0" max="23" style="width:50px" placeholder="0"  onchange="saveHours()">
+        <span style="color:var(--muted)">–</span>
+        <input type="number" id="v_hour_to"   min="0" max="23" style="width:50px" placeholder="23" onchange="saveHours()">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">NowPlaying <span id="clearing-badge" style="display:none;font-size:10px;font-weight:normal;color:#f59e0b;margin-left:8px">clearing slots...</span></div>
+  <div class="row">
+    <div class="row-label">Enabled</div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="np_enabled" onchange="save('nowplaying','enabled',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Scrobbler</div><div class="row-sub">Last.fm: max 4×/s · Libre.fm: max 1×/s</div></div>
+    <div class="row-right" style="flex:1;max-width:160px"><select id="np_scrobbler" style="width:100%" onchange="save('nowplaying','scrobbler',this.value)"><option value="lastfm">Last.fm</option><option value="librefm">Libre.fm</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Priority</div></div>
+    <div class="row-right"><select id="prio-sel-nowplaying" onchange="savePriority('nowplaying',+this.value)"><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option><option value="4">Ultra</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-label">Brightness</div>
+    <div class="row-right" style="gap:10px">
+      <div id="np_local_slider" class="slider-wrap">
+        <input type="range" id="np_brightness" min="1" max="100" oninput="nxt(this,v=>v)" onchange="save('nowplaying','brightness',+this.value)">
+        <span class="val">50</span>
+      </div>
+      <div class="use-global-wrap">
+        <span class="use-global-label">Global</span>
+        <label class="toggle"><input type="checkbox" id="np_use_global" onchange="toggleUseGlobal('nowplaying',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Font</div></div>
+    <div class="row-right" style="flex:1;max-width:190px"><select id="np_font" style="width:100%" onchange="save('nowplaying','font',+this.value)"><option value="1">PressStart2P</option><option value="2">HIAIRP22</option><option value="3">MinecraftStandard</option><option value="4">pcsenior</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">BLE Slots</div><div class="row-sub">Image slot pair (0–254)</div></div>
+    <div class="row-right" style="gap:5px">
+      <span style="font-size:12px;color:var(--muted)">A</span><input type="number" id="np_slot_a" min="0" max="254" style="width:58px" onchange="save('nowplaying','slot_a',+this.value)">
+      <span style="font-size:12px;color:var(--muted)">B</span><input type="number" id="np_slot_b" min="0" max="254" style="width:58px" onchange="save('nowplaying','slot_b',+this.value)">
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Chunk / Poll</div><div class="row-sub">Re-upload & poll intervals (s)</div></div>
+    <div class="row-right" style="gap:6px">
+      <input type="number" id="np_chunk_s" min="5" max="60" style="width:58px" onchange="save('nowplaying','chunk_s',+this.value)">
+      <input type="number" id="np_poll_s" min="0.1" max="5" step="0.1" style="width:58px" onchange="save('nowplaying','poll_s',+this.value)">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Dashboard</div>
+  <div class="row">
+    <div class="row-label">Enabled</div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="md_enabled" onchange="save('dashboard','enabled',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Priority</div></div>
+    <div class="row-right"><select id="prio-sel-dashboard" onchange="savePriority('dashboard',+this.value)"><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option><option value="4">Ultra</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Duration</div><div class="row-sub">Minutes to stay active after trigger</div></div>
+    <div class="row-right" style="gap:6px"><input type="number" id="md_duration" min="1" style="width:65px" onchange="save('dashboard','min_duration_s',+this.value*60)"><span style="font-size:12px;color:var(--muted)">min</span></div>
+  </div>
+  <div class="row">
+    <div class="row-label">Brightness</div>
+    <div class="row-right" style="gap:10px">
+      <div id="md_local_slider" class="slider-wrap">
+        <input type="range" id="md_brightness" min="1" max="100" oninput="nxt(this,v=>v)" onchange="save('dashboard','brightness',+this.value)">
+        <span class="val">50</span>
+      </div>
+      <div class="use-global-wrap">
+        <span class="use-global-label">Global</span>
+        <label class="toggle"><input type="checkbox" id="md_use_global" onchange="toggleUseGlobal('dashboard',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Weather</div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Provider</div></div>
+    <div class="row-right" style="flex:1;max-width:195px"><select id="w_provider" style="width:100%" onchange="saveWeather()"><option value="openmeteo">Open-Meteo</option><option value="wttr">wttr.in</option><option value="nws">NWS (USA only)</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Units</div></div>
+    <div class="row-right" style="flex:1;max-width:195px"><select id="w_units" style="width:100%" onchange="saveWeather()"><option value="metric">Metric (°C)</option><option value="imperial">Imperial (°F)</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Latitude</div></div>
+    <div class="row-right"><input type="number" id="w_lat" step="0.0001" style="width:115px" onchange="saveWeather()"></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Longitude</div></div>
+    <div class="row-right"><input type="number" id="w_lon" step="0.0001" style="width:115px" onchange="saveWeather()"></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">City Name</div><div class="row-sub">wttr.in only — overrides lat/lon</div></div>
+    <div class="row-right" style="flex:1;max-width:165px"><input type="text" id="w_location" style="width:100%" placeholder="e.g. Vienna" onchange="saveWeather()"></div>
+  </div>
+</div>
+
+</div>
+</div>
+
+
+<div id="tab-device" class="tab-pane">
+<div class="pane-inner">
+<div class="card">
+  <div class="card-title">Device</div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">MAC Address</div></div>
+    <div class="row-right" style="flex:1;max-width:210px"><input type="text" id="mac_address" style="width:100%" placeholder="XX:XX:XX:XX:XX:XX" onchange="save('device','mac_address',this.value)"></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Brightness</div><div class="row-sub">Global — used when "Global" is enabled per module</div></div>
+    <div class="row-right"><div class="slider-wrap"><input type="range" id="d_brightness" min="1" max="100" oninput="nxt(this,v=>v)" onchange="save('device','brightness',+this.value)"><span class="val">50</span></div></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Flip Vertical</div><div class="row-sub">Flip top / bottom</div></div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="flip_v" onchange="save('device','flip_vertical',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Flip Horizontal</div><div class="row-sub">Mirror left / right</div></div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="flip_h" onchange="save('device','flip_horizontal',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Reconnect Delay</div><div class="row-sub">Seconds before BLE retry</div></div>
+    <div class="row-right"><input type="number" id="reconnect_delay" min="1" max="30" step="0.5" style="width:75px" onchange="save('device','reconnect_delay',+this.value)"></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Active Hours</div><div class="row-sub">Black screen outside this range</div></div>
+    <div class="row-right" style="gap:6px;flex-wrap:wrap;justify-content:flex-end">
+      <label class="toggle"><input type="checkbox" id="d_always_on" onchange="toggleActiveHours(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      <span style="font-size:12px;color:var(--muted)">Always on</span>
+      <div id="d_hour_range" style="display:flex;align-items:center;gap:5px">
+        <input type="number" id="d_hour_from" min="0" max="23" style="width:50px" placeholder="6"  onchange="saveActiveHours()">
+        <span style="color:var(--muted)">–</span>
+        <input type="number" id="d_hour_to" min="0" max="23" style="width:50px" placeholder="22" onchange="saveActiveHours()">
+        <span style="font-size:12px;color:var(--muted)">h</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+
+<div id="tab-trigger" class="tab-pane active">
+<div class="pane-inner">
+
+<div class="trigger-status" id="trig-status-card">
+  <div class="trigger-status-inner">
+    <div class="trig-mode-name" id="trig-mode-text">—</div>
+    <div class="trig-type">Trigger: <span id="trig-type-text">auto (scheduler)</span></div>
+    <div class="trig-countdown" id="trig-countdown" style="display:none;color:var(--blue)"></div>
+  </div>
+  <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px">
+    <button class="btn btn-danger btn-sm" onclick="resetAll()">↺ Reset All Triggers</button>
+    <span id="clearing-badge-trigger" style="display:none;font-size:11px;color:#f59e0b">clearing slots...</span>
+  </div>
+</div>
+
+<div id="trigger-cards"></div>
+
+</div>
+</div>
+
+<div id="connecting-overlay"><span>Connecting</span><span id="connecting-dots">.</span></div>
+<div id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+[server]
+port = 5000                     # web UI + API port (requires restart to take effect)
+
+[device]
+mac_address     = "XX:XX:XX:XX:XX:XX"
+brightness      = 85            # 1–100
+flip_vertical   = true          # flip top/bottom
+flip_horizontal = true          # mirror left/right
+reconnect_delay = 3.0           # seconds before BLE reconnect attempt
+active_hours    = [6, 22]       # display on from 06:00 to 22:00; outside = black screen
+                                # remove this line to always be on
+
+[clock]
+enabled        = true
+priority       = 1              # higher number wins over lower
+min_duration_s = 0              # 0 = show until something higher-priority triggers
+blink_interval = 2.0            # seconds per colon phase
+brightness     = 1              # 0–100
+color          = [0, 255, 0]    # RGB
+
+[verse_of_day]
+enabled        = true
+priority       = 2
+min_duration_s = 120            # seconds to show before falling back
+probability    = 0.30           # 0.0–1.0 chance to show per time window
+# active_hours = [0, 23]        # restrict to hour range, e.g. [12, 14] — omit for all hours
+time_windows   = [[7,11],[18,25],[33,41],[47,56]]  # minute ranges per hour to roll
+brightness     = 100            # 0–100
+refresh_interval = 30           # seconds between re-sends to keep display alive
+color          = [125, 40, 125] # RGB
+use_global_brightness = false
+
+[nowplaying]
+enabled        = true
+priority       = 3
+min_duration_s = 0              # 0 = show as long as music is detected
+brightness     = 50             # 0–100
+font           = 3              # 1=PressStart2P  2=HIAIRP22  3=MinecraftStandard  4=pcsenior
+slot_a         = 0              # BLE image slot A  (0–254)
+slot_b         = 1              # BLE image slot B  (0–254)
+scrobbler      = "lastfm"       # lastfm | librefm
+chunk_s        = 20             # seconds between progress-bar re-uploads
+poll_s         = 0.5            # scrobbler + display-loop poll interval (lastfm min 0.25s, librefm min 1.0s)
+use_global_brightness = true
+
+[dashboard]
+enabled        = true
+priority       = 4
+min_duration_s = 3600           # seconds to stay active (1 hour)
+brightness     = 50             # 0–100
+use_global_brightness = true
+
+[dashboard.weather]
+provider = "openmeteo"          # openmeteo | wttr | nws (USA only)
+units    = "metric"             # metric (°C) | imperial (°F)
+lat      = 48.2082              # latitude
+lon      = 16.3738              # longitude
+# location = "Vienna"           # optional city name for wttr instead of lat/lon
