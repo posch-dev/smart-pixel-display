@@ -4,6 +4,7 @@ import colorsys
 import io
 import os
 import random
+import re
 import requests
 from math import exp
 
@@ -239,21 +240,19 @@ def _draw_viz_bars(img: Image.Image, heights: list[float],
                 draw.rectangle([x0, row, x1, row], fill=color)
 
 
+def _clean_text(text: str) -> str:
+    return re.sub(r'\s*[\(\[].*?[\)\]]', '', text).strip()
+
+
 def _build_line_strip(text: str, color: tuple, font) -> tuple[Image.Image, int]:
-    # Returns (strip, overflow_px). Scrolls only when text exceeds TEXT_W.
-    probe    = ImageDraw.Draw(Image.new("RGB", (4000, FONT_H)))
-    tw       = _tw(probe, text, font) if text else 0
-    overflow = max(0, tw - TEXT_W)
-    if overflow > 0:
-        gap     = 4   # breathing room after text end before looping back
-        strip_w = tw + gap
-        overflow = overflow + gap
-    else:
-        strip_w = TEXT_W
-    strip = Image.new("RGB", (strip_w, FONT_H), BG)
+    text = _clean_text(text)
+    probe = ImageDraw.Draw(Image.new("RGB", (4000, FONT_H)))
+    while text and _tw(probe, text, font) > TEXT_W:
+        text = text[:-1]
+    strip = Image.new("RGB", (TEXT_W, FONT_H), BG)
     if text:
         _put(ImageDraw.Draw(strip), 0, 0, text, font, color)
-    return strip, overflow
+    return strip, 0
 
 
 def _line_scroll_x(fi: int, overflow: int) -> int:

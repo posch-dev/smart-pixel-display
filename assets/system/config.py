@@ -1,11 +1,37 @@
 # Central config, reads and writes config.toml while preserving comments.
 
+import asyncio
 import os
 import tomlkit
 from PIL import Image
 
 _CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.toml")
 _doc: tomlkit.TOMLDocument | None = None
+_changed: asyncio.Event | None = None
+_loop: asyncio.AbstractEventLoop | None = None
+
+
+def init_event(loop: asyncio.AbstractEventLoop) -> None:
+    global _changed, _loop
+    _loop = loop
+    _changed = asyncio.Event()
+
+
+def notify_changed() -> None:
+    if _changed is not None and _loop is not None:
+        _loop.call_soon_threadsafe(_changed.set)
+
+
+async def wait_for_change(timeout: float) -> bool:
+    if _changed is None:
+        await asyncio.sleep(timeout)
+        return False
+    try:
+        await asyncio.wait_for(_changed.wait(), timeout=timeout)
+        _changed.clear()
+        return True
+    except asyncio.TimeoutError:
+        return False
 
 
 def load() -> tomlkit.TOMLDocument:
@@ -45,6 +71,7 @@ def set(section: str, key: str, value) -> None:
     else:
         doc[section][key] = value
     _save()
+    notify_changed()
 
 
 def all() -> dict:

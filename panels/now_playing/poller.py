@@ -85,6 +85,19 @@ _state = {
 }
 _song_start: float = 0.0   # monotonic time when current song was first seen
 
+_running = threading.Event()
+_running.set()
+
+
+def pause() -> None:
+    _running.clear()
+    print(f"{_ts()} [poller] paused")
+
+
+def resume() -> None:
+    _running.set()
+    print(f"{_ts()} [poller] resumed")
+
 
 def get_state() -> dict:
     with _lock:
@@ -102,6 +115,7 @@ def _poll_loop() -> None:
     _NONE_DEBOUNCE = 3  # consecutive None polls before treating as stopped
 
     while True:
+        _running.wait()
         _ensure_network()
         try:
             track = _user.get_now_playing()

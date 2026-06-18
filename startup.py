@@ -8,7 +8,8 @@ import glob
 import threading
 import binascii
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw
 from pypixelcolor import AsyncClient
 
@@ -31,6 +32,7 @@ md_display = importlib.util.module_from_spec(_md_spec)
 _md_spec.loader.exec_module(md_display)
 
 import poller  as np_poller
+import calendar_store
 from panels.now_playing.main import run_loop as np_run_loop
 
 MAC_ADDRESS     = config.get("device", "mac_address")
@@ -58,7 +60,7 @@ async def _wait_for_active_hour() -> None:
         secs = max(secs, 60)
         print(f"{_ts()} [hours] Outside active hours ({ah[0]}–{ah[1]}). "
               f"Waiting {secs//3600}h {(secs%3600)//60}m ...")
-        await asyncio.sleep(min(secs, 60))
+        await config.wait_for_change(timeout=min(secs, 60))
 
 _VERSE_CACHE_DIR  = os.path.join(os.path.dirname(__file__), "panels", "verse_of_day")
 _VERSE_CACHE_GLOB = os.path.join(_VERSE_CACHE_DIR, ".verse_cache_*.json")
@@ -182,6 +184,9 @@ async def _nowplaying_watcher() -> None:
     _not_playing_ticks = 0
     _STOP_DEBOUNCE     = 5  # consecutive not-playing polls before untriggering
     while True:
+        if not scheduler.get_display_on() or not _is_active_hour():
+            await asyncio.sleep(1)
+            continue
         state = np_poller.get_state()
         is_playing = bool(state.get("playing") and state.get("title"))
         if is_playing:
@@ -200,6 +205,53 @@ async def _nowplaying_watcher() -> None:
         await asyncio.sleep(1)
 
 
+_LOCAL_TZ = ZoneInfo("Europe/Vienna")
+
+
+async def _dashboard_event_watcher() -> None:
+    triggered_keys: set = set()
+    while True:
+        if not scheduler.get_display_on() or not _is_active_hour():
+            await asyncio.sleep(60)
+            continue
+
+        if not config.get("dashboard", "auto_trigger_before_event", False):
+            triggered_keys.clear()
+            await asyncio.sleep(60)
+            continue
+
+        hours_before = config.get("dashboard", "hours_before_event", 2.0)
+        now = datetime.now(_LOCAL_TZ)
+
+        events = calendar_store.get_events()
+        for ev in events:
+            if ev.get("is_all_day") or ev.get("isAllDay", False):
+                continue
+            try:
+                start_dt = datetime.fromisoformat(ev["start_time"]).astimezone(_LOCAL_TZ)
+            except (ValueError, KeyError):
+                continue
+
+            travel = ev.get("_travel_minutes")
+            departure = start_dt - timedelta(minutes=travel) if travel else start_dt
+            trigger_at = departure - timedelta(hours=hours_before)
+
+            ev_key = (ev.get("title", ""), ev.get("start_time", ""))
+
+            if trigger_at <= now < departure and ev_key not in triggered_keys:
+                triggered_keys.add(ev_key)
+                if not scheduler.has_user_trigger():
+                    scheduler.trigger("dashboard", source="auto")
+                    print(f"{_ts()} [event-watcher] dashboard triggered: "
+                          f"{ev.get('title', '?')} (departs {departure.strftime('%H:%M')})")
+                break
+
+        still_valid = {(e.get("title", ""), e.get("start_time", "")) for e in events}
+        triggered_keys &= still_valid
+
+        await asyncio.sleep(60)
+
+
 async def _cancel(task: asyncio.Task | None) -> None:
     if task and not task.done():
         task.cancel()
@@ -209,9 +261,11 @@ async def _cancel(task: asyncio.Task | None) -> None:
             pass
 
 async def run() -> None:
+    config.init_event(asyncio.get_running_loop())
     asyncio.get_event_loop().run_in_executor(None, get_verse_frame)
     np_poller.start()
     asyncio.create_task(_nowplaying_watcher())
+    asyncio.create_task(_dashboard_event_watcher())
 
     # Clear stale triggers, the web UI may re-send them on restart
     for _m in scheduler.MODES:
@@ -266,6 +320,8 @@ async def run() -> None:
                         await _cancel(mode_task)
                         mode_task = current_mode = None
                         last_brightness_sent = -1
+                        np_poller.pause()
+                        md_display.stop_weather()
                         async with ble_lock:
                             await client.send_image_hex(_BLACK, ".png")
                         print(f"{_ts()} [power] Display off — black screen.")
@@ -276,6 +332,7 @@ async def run() -> None:
                                 async with ble_lock:
                                     await client.send_image_hex(_BLACK, ".png")
                                 _black_ts = time.time()
+                        np_poller.resume()
                         print(f"{_ts()} [power] Display on — resuming.")
                         continue
 
@@ -283,19 +340,19 @@ async def run() -> None:
                         await _cancel(mode_task)
                         mode_task = current_mode = None
                         last_brightness_sent = -1
+                        np_poller.pause()
+                        md_display.stop_weather()
                         async with ble_lock:
                             await client.send_image_hex(_BLACK, ".png")
                         print(f"{_ts()} [hours] Black screen.")
-                        await asyncio.sleep(30)
-                        async with ble_lock:
-                            await client.send_image_hex(_BLACK, ".png")
+                        _black_ah_ts = time.time()
                         while not _is_active_hour():
-                            await asyncio.sleep(15 * 60)
-                            async with ble_lock:
-                                await client.send_image_hex(_BLACK, ".png")
-                            await asyncio.sleep(30)
-                            async with ble_lock:
-                                await client.send_image_hex(_BLACK, ".png")
+                            await config.wait_for_change(timeout=30)
+                            if time.time() - _black_ah_ts >= 15 * 60:
+                                async with ble_lock:
+                                    await client.send_image_hex(_BLACK, ".png")
+                                _black_ah_ts = time.time()
+                        np_poller.resume()
                         print(f"{_ts()} [hours] Active hours resumed.")
                         continue
 

@@ -64,6 +64,7 @@ def untrigger(mode: str) -> None:
     if mode == "clock":
         return
     _triggered.pop(mode, None)
+    _trigger_source.pop(mode, None)
     _evaluate()
 
 

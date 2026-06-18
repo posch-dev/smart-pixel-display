@@ -1,5 +1,4 @@
 .env
-assets/config.toml
 
 CLAUDE.md
 .claude/

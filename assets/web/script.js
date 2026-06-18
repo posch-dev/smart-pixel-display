@@ -43,6 +43,14 @@ function showTab(id) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + id).classList.add('active');
   event.currentTarget.classList.add('active');
+  document.getElementById('panel-tabs').classList.toggle('visible', id === 'modules');
+}
+
+function showPanel(id) {
+  document.querySelectorAll('.panel-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.panel-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  event.currentTarget.classList.add('active');
 }
 
 function rgbToHex([r,g,b]) { return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join(''); }
@@ -84,10 +92,22 @@ function updatePowerBtn() {
   btn.title = _displayOn ? 'Turn Off Display' : 'Turn On Display';
 }
 
+function toggleEnabled(mode, enabled) {
+  const prefix = MODULE_PREFIX[mode];
+  const el = document.getElementById(prefix + '_settings');
+  if (el) el.style.display = enabled ? '' : 'none';
+  save(mode, 'enabled', enabled);
+}
+
 function toggleUseGlobal(mode, useGlobal) {
   const prefix = MODULE_PREFIX[mode];
-  document.getElementById(prefix + '_local_slider').style.display = useGlobal ? 'none' : '';
+  document.getElementById(prefix + '_brightness_row').style.display = useGlobal ? 'none' : '';
   save(mode, 'use_global_brightness', useGlobal);
+}
+
+function toggleBeforeEvent(on) {
+  document.getElementById('md_hours_before_row').style.display = on ? '' : 'none';
+  save('dashboard', 'auto_trigger_before_event', on);
 }
 
 async function savePriority(mode, newPrio) {
@@ -346,8 +366,13 @@ function setField(id, value) {
   else el.value = value ?? '';
 }
 
-function _applyUseGlobal(prefix, useGlobal) {
-  document.getElementById(prefix + '_local_slider').style.display = useGlobal ? 'none' : '';
+function _applyVisibility(prefix, mode, cfg_section) {
+  const enabled = cfg_section.enabled ?? true;
+  const el = document.getElementById(prefix + '_settings');
+  if (el) el.style.display = enabled ? '' : 'none';
+  const useGlobal = cfg_section.use_global_brightness ?? false;
+  document.getElementById(prefix + '_use_global').checked = useGlobal;
+  document.getElementById(prefix + '_brightness_row').style.display = useGlobal ? 'none' : '';
 }
 
 function populate() {
@@ -365,19 +390,17 @@ function populate() {
   setField('reconnect_delay', d.reconnect_delay ?? 3);
   if (d.active_hours) {
     document.getElementById('d_always_on').checked = false;
-    document.getElementById('d_hour_range').style.display = 'flex';
+    document.getElementById('d_hours_row').style.display = '';
     setField('d_hour_from', d.active_hours[0]);
     setField('d_hour_to',   d.active_hours[1]);
   } else {
     document.getElementById('d_always_on').checked = true;
-    document.getElementById('d_hour_range').style.display = 'none';
+    document.getElementById('d_hours_row').style.display = 'none';
   }
 
   setField('cl_enabled',    cl.enabled);
   document.getElementById('prio-sel-clock').value = cl.priority ?? 1;
-  const clGlobal = cl.use_global_brightness ?? false;
-  document.getElementById('cl_use_global').checked = clGlobal;
-  _applyUseGlobal('cl', clGlobal);
+  _applyVisibility('cl', 'clock', cl);
   setField('cl_brightness', cl.brightness ?? 1); nxt(document.getElementById('cl_brightness'), x=>x);
   setField('cl_blink',      cl.blink_interval ?? 2); nxt(document.getElementById('cl_blink'), x=>x+'s');
   setField('cl_color',      cl.color || [0,255,0]);
@@ -387,14 +410,12 @@ function populate() {
   setField('v_duration',   Math.round((v.min_duration_s ?? 120) / 60));
   const prob = Math.round((v.probability ?? 0.3)*100);
   setField('v_prob', prob); document.querySelector('#v_prob+.val').textContent = prob + '%';
-  const vGlobal = v.use_global_brightness ?? false;
-  document.getElementById('v_use_global').checked = vGlobal;
-  _applyUseGlobal('v', vGlobal);
+  _applyVisibility('v', 'verse_of_day', v);
   setField('v_brightness', v.brightness ?? 100); nxt(document.getElementById('v_brightness'), x=>x);
   setField('v_color', v.color || [125,40,125]);
   if (v.active_hours) {
     document.getElementById('v_allhours').checked = false;
-    toggleHours(false);
+    document.getElementById('v_hours_row').style.display = '';
     setField('v_hour_from', v.active_hours[0]);
     setField('v_hour_to',   v.active_hours[1]);
   }
@@ -402,9 +423,7 @@ function populate() {
   setField('np_enabled',   np.enabled);
   setField('np_scrobbler', np.scrobbler ?? 'lastfm');
   document.getElementById('prio-sel-nowplaying').value = np.priority ?? 3;
-  const npGlobal = np.use_global_brightness ?? false;
-  document.getElementById('np_use_global').checked = npGlobal;
-  _applyUseGlobal('np', npGlobal);
+  _applyVisibility('np', 'nowplaying', np);
   setField('np_brightness',np.brightness ?? 50); nxt(document.getElementById('np_brightness'), x=>x);
   setField('np_font',      np.font ?? 3);
   setField('np_slot_a',    np.slot_a ?? 0);
@@ -415,10 +434,12 @@ function populate() {
   setField('md_enabled',   md.enabled);
   document.getElementById('prio-sel-dashboard').value = md.priority ?? 4;
   setField('md_duration',  Math.round((md.min_duration_s ?? 3600) / 60));
-  const mdGlobal = md.use_global_brightness ?? false;
-  document.getElementById('md_use_global').checked = mdGlobal;
-  _applyUseGlobal('md', mdGlobal);
+  _applyVisibility('md', 'dashboard', md);
   setField('md_brightness',md.brightness ?? 50); nxt(document.getElementById('md_brightness'), x=>x);
+  setField('md_auto_cal',     md.auto_trigger_on_calendar ?? true);
+  setField('md_before_event', md.auto_trigger_before_event ?? false);
+  setField('md_hours_before', md.hours_before_event ?? 2.0);
+  document.getElementById('md_hours_before_row').style.display = (md.auto_trigger_before_event ?? false) ? '' : 'none';
 
   setField('w_provider', w.provider ?? 'openmeteo');
   setField('w_units',    w.units    ?? 'metric');
@@ -454,7 +475,7 @@ async function loadStatus() {
 }
 
 function toggleActiveHours(alwaysOn) {
-  document.getElementById('d_hour_range').style.display = alwaysOn ? 'none' : 'flex';
+  document.getElementById('d_hours_row').style.display = alwaysOn ? 'none' : '';
   if (alwaysOn) save('device', 'active_hours', null);
   else saveActiveHours();
 }
@@ -465,7 +486,7 @@ function saveActiveHours() {
 }
 
 function toggleHours(allHours) {
-  document.getElementById('v_hour_range').style.display = allHours ? 'none' : 'flex';
+  document.getElementById('v_hours_row').style.display = allHours ? 'none' : '';
   if (allHours) save('verse_of_day','active_hours',null);
 }
 function saveHours() {

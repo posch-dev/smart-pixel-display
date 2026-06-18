@@ -111,7 +111,6 @@ def reset_scheduler():
     for m in scheduler.MODES:
         if m != "clock":
             scheduler.untrigger(m)
-    scheduler.trigger("clock", source="auto")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 
@@ -121,8 +120,11 @@ def receive_calendar():
     if not isinstance(data, dict):
         return jsonify({"error": "expected a JSON object"}), 400
     calendar_store.append_event(data)
-    scheduler.trigger("dashboard")
-    print(f"[calendar] +1 event: {data.get('title', '?')!r} — dashboard triggered")
+    if config.get("dashboard", "auto_trigger_on_calendar", True):
+        scheduler.trigger("dashboard", source="auto")
+        print(f"[calendar] +1 event: {data.get('title', '?')!r} — dashboard triggered")
+    else:
+        print(f"[calendar] +1 event: {data.get('title', '?')!r}")
     return jsonify({"ok": True}), 200
 
 

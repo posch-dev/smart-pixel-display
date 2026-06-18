@@ -49,10 +49,13 @@ priority       = 4
 min_duration_s = 3600           # seconds to stay active (1 hour)
 brightness     = 50             # 0–100
 use_global_brightness = true
+auto_trigger_on_calendar  = true   # trigger dashboard when /calendar POST arrives
+auto_trigger_before_event = false  # auto-trigger X hours before event departure time
+hours_before_event        = 2.0    # hours before departure to trigger (departure = start - travel)
 
 [dashboard.weather]
 provider = "openmeteo"          # openmeteo | wttr | nws (USA only)
 units    = "metric"             # metric (°C) | imperial (°F)
-lat      = 48.2082              # latitude
-lon      = 16.3738              # longitude
+lat      = 48.2082              # latitude  (Stephansplatz, Vienna)
+lon      = 16.3731              # longitude (Stephansplatz, Vienna)
 # location = "Vienna"           # optional city name for wttr instead of lat/lon

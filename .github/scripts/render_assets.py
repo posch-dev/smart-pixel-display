@@ -207,6 +207,19 @@ SONGS = [
         },
     },
     {
+        "file":  "nowplaying_all_the_love.gif",
+        "query": "all the love kanye west",
+        "state": {
+            "title":        "All The Love",
+            "artist":       "Kanye West",
+            "album":        "Bully",
+            "bpm":          87,
+            "elapsed_s":    81.0,
+            "duration_s":   180.0,
+            "preset":       get_preset(["hip hop", "rap"]),
+        },
+    },
+    {
         "file":  "nowplaying_trying_on_shoes.gif",
         "query": "trying on shoes tate mcrae",
         "state": {
@@ -220,16 +233,68 @@ SONGS = [
         },
     },
     {
-        "file":  "nowplaying_all_the_love.gif",
-        "query": "all the love kanye west",
+        "file":  "nowplaying_babybell.gif",
+        "query": "babybell breitner",
         "state": {
-            "title":        "All The Love",
-            "artist":       "Kanye West",
-            "album":        "Bully",
-            "bpm":          87,
-            "elapsed_s":    81.0,
+            "title":        "babybell",
+            "artist":       "breitner",
+            "album":        "babybell",
+            "bpm":          100,
+            "elapsed_s":    45.0,
             "duration_s":   180.0,
-            "preset":       get_preset(["hip hop", "rap"]),
+            "preset":       get_preset(["hip hop", "german hip hop"]),
+        },
+    },
+    {
+        "file":  "nowplaying_big_city_life.gif",
+        "query": "big city life mattafix",
+        "state": {
+            "title":        "Big City Life",
+            "artist":       "Mattafix",
+            "album":        "Signs of a Struggle",
+            "bpm":          87,
+            "elapsed_s":    60.0,
+            "duration_s":   228.0,
+            "preset":       get_preset(["reggae", "hip hop", "dancehall"]),
+        },
+    },
+    {
+        "file":  "nowplaying_sword_from_the_stone.gif",
+        "query": "sword from the stone passenger",
+        "state": {
+            "title":        "Sword from the Stone",
+            "artist":       "Passenger",
+            "album":        "Sword from the Stone",
+            "bpm":          130,
+            "elapsed_s":    90.0,
+            "duration_s":   240.0,
+            "preset":       get_preset(["folk", "singer-songwriter", "acoustic"]),
+        },
+    },
+    {
+        "file":  "nowplaying_media_vita.gif",
+        "query": "media vita hardknock music",
+        "state": {
+            "title":        "Media Vita",
+            "artist":       "Hardknock Music",
+            "album":        "Media Vita",
+            "bpm":          92,
+            "elapsed_s":    55.0,
+            "duration_s":   195.0,
+            "preset":       get_preset(["hip hop", "beats"]),
+        },
+    },
+    {
+        "file":  "nowplaying_mice_on_venus.gif",
+        "query": "mice on venus c418",
+        "state": {
+            "title":        "Mice on Venus",
+            "artist":       "C418",
+            "album":        "Minecraft - Volume Alpha",
+            "bpm":          60,
+            "elapsed_s":    120.0,
+            "duration_s":   281.0,
+            "preset":       get_preset(["ambient", "electronic", "soundtrack"]),
         },
     },
 ]
@@ -241,23 +306,7 @@ for song in SONGS:
     _scale_gif_bytes(gif_bytes, song["file"])
 
 
-print("\nPreview GIF:")
-
-PREVIEW_ORDER = [
-    "clock.gif",
-    "dashboard_weather_sunny.png",
-    "nowplaying_go_away.gif",
-    "verse_short.png",
-    "dashboard_mode2.png",
-    "nowplaying_trying_on_shoes.gif",
-    "verse_medium.png",
-    "dashboard_mode3.png",
-    "nowplaying_all_the_love.gif",
-    "verse_long.png",
-    "dashboard_mode3_late.gif",
-]
-
-def _asset_frames(name: str, target_ms: int = 3000):
+def _asset_frames(name: str, target_ms: int = 5000):
     src = Image.open(os.path.join(OUT, name))
     if not hasattr(src, "n_frames") or src.n_frames == 1:
         return [src.convert("RGB")], [target_ms]
@@ -273,25 +322,50 @@ def _asset_frames(name: str, target_ms: int = 3000):
                 break
     return out_f, out_d
 
-all_f, all_d = [], []
-for asset in PREVIEW_ORDER:
-    f, d = _asset_frames(asset)
-    all_f.extend(f); all_d.extend(d)
 
-W, H = all_f[0].size
-sample_idx = list(range(0, len(all_f), max(1, len(all_f) // 12)))[:12]
-composite = Image.new("RGB", (W, H * len(sample_idx)))
-for i, idx in enumerate(sample_idx):
-    composite.paste(all_f[idx], (0, i * H))
-palette_src = composite.quantize(colors=256, method=0)
+def _merge_assets(sources: list[str], name: str, hold_ms: int = 5000):
+    all_f, all_d = [], []
+    for src_name in sources:
+        f, d = _asset_frames(src_name, hold_ms)
+        all_f.extend(f); all_d.extend(d)
+    W, H = all_f[0].size
+    sample_idx = list(range(0, len(all_f), max(1, len(all_f) // 16)))[:16]
+    composite = Image.new("RGB", (W, H * len(sample_idx)))
+    for i, idx in enumerate(sample_idx):
+        composite.paste(all_f[idx], (0, i * H))
+    palette_src = composite.quantize(colors=256, method=0)
+    quantized = [f.quantize(palette=palette_src, dither=Image.Dither.NONE) for f in all_f]
+    buf = io.BytesIO()
+    quantized[0].save(buf, format="GIF", save_all=True, append_images=quantized[1:],
+                      loop=0, duration=all_d, optimize=False)
+    path = os.path.join(OUT, name)
+    with open(path, "wb") as fh:
+        fh.write(buf.getvalue())
+    print(f"  {name}  ({len(buf.getvalue()) // 1024} KB, {len(all_f)} frames)")
 
-quantized = [f.quantize(palette=palette_src, dither=Image.Dither.NONE) for f in all_f]
-buf = io.BytesIO()
-quantized[0].save(buf, format="GIF", save_all=True, append_images=quantized[1:],
-                  loop=0, duration=all_d, optimize=False)
-with open(os.path.join(OUT, "preview.gif"), "wb") as fh:
-    fh.write(buf.getvalue())
-print(f"  preview.gif  ({len(buf.getvalue()) // 1024} KB, {len(all_f)} frames)")
+
+print("\nVerse Preview GIF:")
+_merge_assets(["verse_short.png", "verse_medium.png", "verse_long.png"], "verse_preview.gif")
+
+print("\nDashboard Preview GIF:")
+_merge_assets([
+    "dashboard_weather_partly.png",
+    "dashboard_weather_below_zero.png",
+    "dashboard_mode2.png",
+    "dashboard_mode3.png",
+    "dashboard_mode3_late.gif",
+], "dashboard_preview.gif")
+
+print("\nNow Playing Preview GIF:")
+_merge_assets([s["file"] for s in SONGS], "nowplaying_preview.gif")
+
+print("\nPreview GIF:")
+_merge_assets([
+    "clock.gif",
+    "verse_preview.gif",
+    "nowplaying_preview.gif",
+    "dashboard_preview.gif",
+], "preview.gif")
 
 
 print("\nDone.")

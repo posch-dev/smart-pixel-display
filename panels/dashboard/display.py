@@ -20,10 +20,10 @@ import weather as weather_mod
 import calendar_store
 import assets.system.config as config
 
-MAC              = "XX:XX:XX:XX:XX:XX"
-BRIGHTNESS       = 5
-BLINK_S          = 1.0
-RECONNECT_S      = 3.0
+MAC              = config.get("device", "mac_address")
+BRIGHTNESS       = config.get("device", "brightness", 50)
+BLINK_S          = config.get("clock", "blink_interval", 2.0)
+RECONNECT_S      = config.get("device", "reconnect_delay", 3.0)
 WEATHER_REFRESH  = 900   # seconds between background fetches (15 min)
 
 _WEATHER_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".weather_cache.json")
@@ -68,6 +68,14 @@ async def _weather_fetcher() -> None:
             print(f"[weather] fetch failed: {e}")
         await asyncio.sleep(WEATHER_REFRESH)
 
+
+def stop_weather() -> None:
+    global _weather_task
+    if _weather_task and not _weather_task.done():
+        _weather_task.cancel()
+        _weather_task = None
+        print("[weather] stopped")
+
 W, H     = 128, 32
 LOCAL_TZ = ZoneInfo("Europe/Vienna")
 BG       = (0, 0, 0)
@@ -86,7 +94,6 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."
 _DELTARUNE = os.path.join(_FONTS_DIR, "MinecraftStandard.otf")
 _MINECRAFT = os.path.join(_FONTS_DIR, "MinecraftStandard.otf")
 _IKKLE4    = os.path.join(_FONTS_DIR, "Ikkle4.ttf")
-_LUKE6     = os.path.join(_FONTS_DIR, "cga-luke-6px-bold.otf")
 _HAIRPORT  = os.path.join(_FONTS_DIR, "HIAIRP22.ttf")
 
 _cache: dict = {}
