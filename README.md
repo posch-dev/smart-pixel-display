@@ -38,7 +38,17 @@ The scheduler handles switching automatically. Now Playing triggers when it dete
 
 ## Setup
 
-### 1. Configure your device
+### 1. Clone Repository and install dependencies
+
+```bash
+git clone https://github.com//smart-pixel-dashboard.git
+cd smart-pixel-Dashboard
+
+pip3 install -r requirements.txt --break-system-packages
+# or use: pip3 install -r requirements.txt
+```
+
+### 2. Configure your device
 
 Add your panel's MAC address to `assets/config.toml`:
 
@@ -49,7 +59,7 @@ mac_address = "XX:XX:XX:XX:XX:XX"
 
 To find the address, pair the device via Bluetooth and run `bluetoothctl devices`.
 
-### 2. Add API keys (optional)
+#### 2.1 Add API keys (optional)
 
 Create a `.env` file in the project root:
 
@@ -73,7 +83,29 @@ Clock and Dashboard work out of the box, no keys needed. Now Playing supports [L
 
 ### 3. Start
 
-Run `startup.py`. The web UI will be at `http://<device-ip>:5000`.
+run `startup.py`. The web UI will be at `http://<device-ip>:5000`.
+
+You can also run each panel standalone, without the web UI:
+```bash
+python panels/<panel>/main.py
+```
+
+#### 3.1 Running on boot (Optional)
+
+run 'install.sh' to setup systemd service:
+
+```bash
+./install.sh
+```
+
+##### 3.1.1 Managing the autostart Service:
+
+```bash
+sudo systemctl status smartpixelpanel    # Check status
+sudo systemctl restart smartpixelpanel   # Restart
+sudo systemctl stop smartpixelpanel      # Stop
+journalctl -u smartpixelpanel -f         # View live logs
+```
 
 ## Configuration
 
@@ -118,13 +150,6 @@ DELETE /calendar              - clear all calendar events
 GET    /dashboard/status      - current dashboard data
 GET    /config                - full config dump
 POST   /config/{section}/{key} - update a config value
-```
-
-## Running on boot
-
-```bash
-sudo cp assets/system/smart-pixel-dashboard.service /etc/systemd/system/
-sudo systemctl enable --now smart-pixel-dashboard
 ```
 
 ## License
