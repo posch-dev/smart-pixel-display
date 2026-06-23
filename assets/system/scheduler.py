@@ -1,5 +1,3 @@
-# Mode scheduler with priority-based mode switching for the LED matrix.
-
 import os
 import sys
 import random
@@ -11,10 +9,20 @@ import assets.system.config as config
 
 MODES = ["clock", "verse_of_day", "nowplaying", "dashboard"]
 
-# clock is always triggered, it's the fallback when nothing else is active
-_triggered: dict[str, float] = {"clock": time.time()}
-_trigger_source: dict[str, str] = {"clock": "auto"}   # "auto" | "user"
-_active_mode: str = "clock"
+
+def _fallback_mode() -> str:
+    best, best_prio = MODES[0], float("inf")
+    for m in MODES:
+        if not config.get(m, "enabled", False):
+            continue
+        prio = config.get(m, "priority", 999)
+        if prio < best_prio:
+            best, best_prio = m, prio
+    return best
+
+_triggered: dict[str, float] = {}
+_trigger_source: dict[str, str] = {}
+_active_mode: str = MODES[0]
 _active_since: float = time.time()
 _verse_last_window: int = -1  # h*100+window_index, so we roll only once per window entry
 _display_on: bool = True
@@ -34,7 +42,7 @@ def set_display_on(on: bool) -> None:
 
 
 def has_user_trigger() -> bool:
-    return any(_trigger_source.get(m) == "user" for m in _triggered if m != "clock")
+    return any(_trigger_source.get(m) == "user" for m in _triggered)
 
 
 def get_status() -> dict:
@@ -49,7 +57,8 @@ def get_status() -> dict:
 
 
 def trigger(mode: str, source: str = "user") -> None:
-    # Mark a mode as active. 'source' is 'user' or 'auto'.
+    if mode == _fallback_mode() and source != "user":
+        source = "auto"
     _triggered[mode] = time.time()
     _trigger_source[mode] = source
     _evaluate()
@@ -60,8 +69,9 @@ def is_triggered(mode: str) -> bool:
 
 
 def untrigger(mode: str) -> None:
-    # Remove a mode's trigger so it no longer competes for the display.
-    if mode == "clock":
+    if mode == _fallback_mode():
+        _trigger_source[mode] = "auto"
+        _evaluate()
         return
     _triggered.pop(mode, None)
     _trigger_source.pop(mode, None)
@@ -69,27 +79,45 @@ def untrigger(mode: str) -> None:
 
 
 def _evaluate() -> None:
-    # Pick the highest-priority enabled triggered mode as the active one.
     global _active_mode, _active_since
-    best, best_prio = "clock", -1
-    for mode in _triggered:
-        if not config.get(mode, "enabled", False):
-            continue
-        prio = config.get(mode, "priority", 0)
-        if prio > best_prio:
-            best, best_prio = mode, prio
+    fb = _fallback_mode()
+    if fb not in _triggered:
+        _triggered[fb] = time.time()
+        _trigger_source[fb] = "auto"
+
+    user_modes = [
+        m for m in _triggered
+        if _trigger_source.get(m) == "user"
+        and config.get(m, "enabled", False)
+    ]
+
+    if user_modes:
+        best, best_prio = user_modes[0], config.get(user_modes[0], "priority", 0)
+        for mode in user_modes[1:]:
+            prio = config.get(mode, "priority", 0)
+            if prio > best_prio:
+                best, best_prio = mode, prio
+    else:
+        best, best_prio = fb, -1
+        for mode in _triggered:
+            if not config.get(mode, "enabled", False):
+                continue
+            prio = config.get(mode, "priority", 0)
+            if prio > best_prio:
+                best, best_prio = mode, prio
+
     if best != _active_mode:
         _active_mode = best
         _active_since = time.time()
 
 
 def tick() -> None:
-    # Called every second, handles expirations and time-based verse triggers.
     global _verse_last_window
 
     min_dur = config.get(_active_mode, "min_duration_s", 0)
     if min_dur > 0 and (time.time() - _active_since) >= min_dur:
-        untrigger(_active_mode)
+        if _trigger_source.get(_active_mode) != "user":
+            untrigger(_active_mode)
 
     if config.get("verse_of_day", "enabled", False) and "verse_of_day" not in _triggered:
         now = datetime.now()

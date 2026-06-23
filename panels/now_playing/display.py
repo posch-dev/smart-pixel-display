@@ -62,6 +62,7 @@ _FONT_CHOICE = 3
 
 _FONT_PATH  = os.path.join(_FONTS_DIR, FONTS[_FONT_CHOICE][1])
 _font_cache: dict = {}
+last_accents: tuple[tuple, tuple, tuple] | None = None
 
 
 def set_font(n: int) -> None:
@@ -113,75 +114,105 @@ def _perceived_luminance(rgb: tuple) -> float:
 
 
 def _accent_colors(cover_bytes: bytes) -> tuple[tuple, tuple, tuple]:
-    # Extract 3 accent colors from cover, sorted darkest first. Hues are nudged apart if too close.
-    MIN_HUE_DIST = 0.13   # ~47° minimum between any two colors
+    from math import sin, cos, atan2, pi, sqrt
+    BUCKET_RADIUS = 0.06   # ~22° hue bucket
+    MIN_RGB_DIST  = 55     # minimum euclidean RGB distance after normalization
+
+    def _hue_dist(h1, h2):
+        return min(abs(h1 - h2), 1 - abs(h1 - h2))
+
+    def _circular_mean_hue(hues):
+        s = sum(sin(h * 2 * pi) for h in hues)
+        c = sum(cos(h * 2 * pi) for h in hues)
+        return (atan2(s, c) / (2 * pi)) % 1.0
 
     def _normalize(h, s):
         r, g, b = colorsys.hsv_to_rgb(h, max(s, 0.80), 0.85)
         return (int(r * 255), int(g * 255), int(b * 255))
 
-    def _hue_dist(h1, h2):
-        return min(abs(h1 - h2), 1 - abs(h1 - h2))
-
-    def _nudge_apart(hues: list[float]) -> list[float]:
-        # Push hues apart until all pairs exceed MIN_HUE_DIST, each moving as little as possible.
-        hues = list(hues)
-        for _ in range(200):
-            changed = False
-            for i in range(len(hues)):
-                for j in range(len(hues)):
-                    if i == j:
-                        continue
-                    d = _hue_dist(hues[i], hues[j])
-                    if d < MIN_HUE_DIST:
-                        gap    = (MIN_HUE_DIST - d) / 2 + 0.005
-                        diff   = (hues[j] - hues[i]) % 1.0
-                        sign   = 1 if diff < 0.5 else -1
-                        hues[i] = (hues[i] - sign * gap) % 1.0
-                        hues[j] = (hues[j] + sign * gap) % 1.0
-                        changed = True
-            if not changed:
-                break
-        return hues
+    def _rgb_dist(c1, c2):
+        return sqrt(sum((a - b) ** 2 for a, b in zip(c1, c2)))
 
     try:
         img = Image.open(io.BytesIO(cover_bytes)).convert("RGB")
         img = img.resize((16, 16), Image.LANCZOS)
 
-        candidates = []
+        pixels = []
         for p in img.getdata():
-            h, s, v = colorsys.rgb_to_hsv(p[0]/255, p[1]/255, p[2]/255)
-            if s >= 0.30 and 0.25 <= v <= 0.95:
-                candidates.append((s * v, h, s))
+            h, s, v = colorsys.rgb_to_hsv(p[0] / 255, p[1] / 255, p[2] / 255)
+            if s >= 0.15 and 0.15 <= v <= 0.95:
+                pixels.append((h, s, v))
 
-        candidates.sort(reverse=True)
+        if len(pixels) < 3:
+            for p in img.getdata():
+                h, s, v = colorsys.rgb_to_hsv(p[0] / 255, p[1] / 255, p[2] / 255)
+                if v >= 0.10:
+                    pixels.append((h, s, v))
 
-        raw_hues: list[float] = []
-        raw_sats: list[float] = []
+        if not pixels:
+            return (80, 80, 255), (200, 80, 200), (255, 180, 50)
 
-        for _, h, s in candidates:
-            if all(_hue_dist(h, rh) > 0.05 for rh in raw_hues):  # loose first pass
-                raw_hues.append(h)
-                raw_sats.append(s)
-                if len(raw_hues) == 3:
+        buckets: list[list[tuple]] = []
+        bucket_hues: list[float] = []
+
+        for h, s, v in pixels:
+            placed = False
+            for i, bh in enumerate(bucket_hues):
+                if _hue_dist(h, bh) < BUCKET_RADIUS:
+                    buckets[i].append((h, s, v))
+                    placed = True
+                    break
+            if not placed:
+                buckets.append([(h, s, v)])
+                bucket_hues.append(h)
+
+        scored: list[tuple[int, float, float]] = []
+        for bucket in buckets:
+            count = len(bucket)
+            avg_h = _circular_mean_hue([h for h, _, _ in bucket])
+            avg_s = sum(s for _, s, _ in bucket) / count
+            scored.append((count, avg_h, avg_s))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        picked_rgb: list[tuple] = []
+        picked_hs: list[tuple[float, float]] = []
+        for count, h, s in scored:
+            rgb = _normalize(h, s)
+            if all(_rgb_dist(rgb, pr) >= MIN_RGB_DIST for pr in picked_rgb):
+                picked_rgb.append(rgb)
+                picked_hs.append((h, s))
+                if len(picked_rgb) == 3:
                     break
 
-        while len(raw_hues) < 3:
-            base = raw_hues[-1] if raw_hues else 0.0
-            raw_hues.append((base + 0.33) % 1.0)
-            raw_sats.append(0.85)
+        if len(picked_rgb) < 3:
+            base_h = picked_hs[0][0] if picked_hs else 0.6
+            variants = [
+                (base_h, 0.95, 0.90),
+                (base_h, 0.55, 0.85),
+                (base_h, 0.35, 0.90),
+                ((base_h + 0.05) % 1.0, 0.80, 0.85),
+                ((base_h - 0.05) % 1.0, 0.80, 0.85),
+            ]
+            for vh, vs, vv in variants:
+                r, g, b = colorsys.hsv_to_rgb(vh, vs, vv)
+                rgb = (int(r * 255), int(g * 255), int(b * 255))
+                if all(_rgb_dist(rgb, pr) >= MIN_RGB_DIST for pr in picked_rgb):
+                    picked_rgb.append(rgb)
+                    if len(picked_rgb) == 3:
+                        break
 
-        final_hues = _nudge_apart(raw_hues)
+        while len(picked_rgb) < 3:
+            r, g, b = colorsys.hsv_to_rgb(base_h, 0.50, 0.70)
+            picked_rgb.append((int(r * 255), int(g * 255), int(b * 255)))
 
-        accents = [_normalize(h, s) for h, s in zip(final_hues, raw_sats)]
-
-        # Sort by perceived luminance: darkest first (→ bottom of viz), brightest last (→ top)
-        accents.sort(key=_perceived_luminance)
-
-        return accents[0], accents[1], accents[2]
+        a, b, c = picked_rgb[0], picked_rgb[1], picked_rgb[2]
+        if _rgb_dist(a, b) > _rgb_dist(a, c):
+            b, c = c, b
+        return a, b, c
 
     except Exception:
-        return (50, 80, 255), (255, 50, 150), (255, 220, 0)
+        return (80, 80, 255), (200, 80, 200), (255, 180, 50)
 
 
 _FALLBACK_DURATION = 200.0   # 3:20, used when duration is unknown
@@ -219,7 +250,6 @@ def _viz_color(from_bottom: int) -> tuple:
 
 def _draw_viz_bars(img: Image.Image, heights: list[float],
                    c_lo: tuple, c_mid: tuple, c_hi: tuple) -> None:
-    # Draw visualizer bars with three colour zones (lo=bottom, mid=middle, hi=top).
     draw     = ImageDraw.Draw(img)
     zone_mid = H // 3        # below this → c_lo
     zone_hi  = 2 * H // 3   # above this → c_hi, between → c_mid
@@ -288,7 +318,9 @@ def generate_gif(state: dict, quick: bool = False) -> bytes:
     frames_per_beat = max(1, round(60_000 / bpm / FRAME_MS))
 
     cover_bytes = state.get("cover")
-    accent1, accent2, accent3 = _accent_colors(cover_bytes) if cover_bytes else ((255, 50, 100), (50, 200, 255), (255, 200, 0))
+    global last_accents
+    accent1, accent2, accent3 = _accent_colors(cover_bytes) if cover_bytes else ((0, 255, 0), (255, 100, 0), (0, 210, 210))
+    last_accents = (accent1, accent2, accent3)
 
     cover_base = Image.new("RGB", (W, H), BG)
     if cover_bytes:
@@ -310,19 +342,11 @@ def generate_gif(state: dict, quick: bool = False) -> bytes:
             pass
     else:
         ph_draw = ImageDraw.Draw(cover_base)
-        r1, g1, b1 = accent1
-        r2, g2, b2 = accent2
-        for y in range(H):
-            t = y / (H - 1)
-            ph_draw.rectangle(
-                [0, y, COVER_W - 1, y],
-                fill=(round(r1 * (1 - t) + r2 * t),
-                      round(g1 * (1 - t) + g2 * t),
-                      round(b1 * (1 - t) + b2 * t)),
-            )
         note_font = _load(16)
-        note_x, note_y = 8, 7
-        ph_draw.text((note_x + 1, note_y + 1), "♪", font=note_font, fill=(0, 0, 0))
+        bb = ph_draw.textbbox((0, 0), "♪", font=note_font)
+        nw, nh = bb[2] - bb[0], bb[3] - bb[1]
+        note_x = (COVER_W - nw) // 2 - bb[0]
+        note_y = (H - nh) // 2 - bb[1]
         ph_draw.text((note_x, note_y), "♪", font=note_font, fill=(255, 255, 255))
 
     font = _load(FONT_H)

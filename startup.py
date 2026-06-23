@@ -16,6 +16,7 @@ from pypixelcolor import AsyncClient
 import assets.system.config as config
 import assets.system.scheduler as scheduler
 import assets.system.api as api
+import assets.system.webhooks as webhooks
 from panels.clock.main import DISPLAY_W, DISPLAY_H, render_frame
 from panels.verse_of_day.main import fetch_reference, render_reference, FONT_PATH as _VERSE_FONT_PATH
 
@@ -129,6 +130,13 @@ def _black_frame() -> str:
 
 _BLACK = _black_frame()
 
+
+def _mode_color_ctx(mode: str) -> dict | None:
+    color = config.get(mode, "color")
+    if isinstance(color, (list, tuple)) and len(color) == 3:
+        return {"accent1": tuple(color)}
+    return None
+
 def _add_clearing_pixel(hex_frame: str) -> str:
     img = Image.open(io.BytesIO(binascii.unhexlify(hex_frame)))
     img.putpixel((0, DISPLAY_H - 1), (0, 0, 255))
@@ -173,7 +181,7 @@ async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
 
 async def _nowplaying_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
     brightness = _get_active_brightness("nowplaying")
-    await np_run_loop(client, initial_black=False, brightness=brightness)
+    await np_run_loop(client, initial_black=False, brightness=brightness, ble_lock=ble_lock)
 
 
 async def _dashboard_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
@@ -184,7 +192,7 @@ async def _nowplaying_watcher() -> None:
     _not_playing_ticks = 0
     _STOP_DEBOUNCE     = 5  # consecutive not-playing polls before untriggering
     while True:
-        if not scheduler.get_display_on() or not _is_active_hour():
+        if not scheduler.get_display_on() or not _is_active_hour() or not api.is_ready():
             await asyncio.sleep(1)
             continue
         state = np_poller.get_state()
@@ -269,8 +277,14 @@ async def run() -> None:
 
     # Clear stale triggers, the web UI may re-send them on restart
     for _m in scheduler.MODES:
-        if _m != "clock":
-            scheduler.untrigger(_m)
+        scheduler.untrigger(_m)
+
+    _ever_connected = False
+    _disconnect_at: float | None = None
+    _tick_task: asyncio.Task | None = None
+    _clear_task: asyncio.Task | None = None
+    _last_mode: str | None = None
+    FRESH_CONNECT_THRESHOLD = 120
 
     while True:
         await _wait_for_active_hour()
@@ -281,42 +295,59 @@ async def run() -> None:
                 api.set_connected(True)
 
                 ble_lock = asyncio.Lock()
-                clearing = [True]   # mutable so tasks can observe it
+                clearing = [True]
                 last_brightness_sent = -1
 
-                async def clear_slots():
-                    api.set_clearing(True)
-                    print(f"{_ts()} Clearing slots ...")
-                    deadline = asyncio.get_running_loop().time() + 60
-                    for slot in range(MAX_SLOTS):
-                        if asyncio.get_running_loop().time() > deadline:
-                            print(f"{_ts()} Clearing timed out at slot {slot}, giving up.")
-                            break
-                        try:
-                            async with ble_lock:
-                                await asyncio.wait_for(client.delete(slot), timeout=2.0)
-                        except asyncio.TimeoutError:
-                            print(f"{_ts()} Slot {slot} delete timed out, skipping.")
-                        except Exception as e:
-                            print(f"{_ts()} Slot {slot} delete error: {e}, skipping.")
+                need_clear = (not _ever_connected
+                              or _disconnect_at is None
+                              or time.time() - _disconnect_at >= FRESH_CONNECT_THRESHOLD)
+
+                await _cancel(_tick_task)
+                await _cancel(_clear_task)
+
+                if need_clear:
+                    async def clear_slots():
+                        api.set_clearing(True)
+                        print(f"{_ts()} Clearing slots ...")
+                        deadline = asyncio.get_running_loop().time() + 60
+                        for slot in range(MAX_SLOTS):
+                            if asyncio.get_running_loop().time() > deadline:
+                                print(f"{_ts()} Clearing timed out at slot {slot}, giving up.")
+                                break
+                            try:
+                                async with ble_lock:
+                                    await asyncio.wait_for(client.delete(slot), timeout=2.0)
+                            except asyncio.TimeoutError:
+                                print(f"{_ts()} Slot {slot} delete timed out, skipping.")
+                            except Exception as e:
+                                print(f"{_ts()} Slot {slot} delete error: {e}, skipping.")
+                        clearing[0] = False
+                        api.set_clearing(False)
+                        print(f"{_ts()} Slots cleared.")
+                    _clear_task = asyncio.create_task(clear_slots())
+                else:
                     clearing[0] = False
-                    api.set_clearing(False)
-                    print(f"{_ts()} Slots cleared.")
+                    print(f"{_ts()} Quick reconnect, skipping slot clear.")
+
+                _ever_connected = True
+                _disconnect_at = None
 
                 async def tick_loop():
                     while True:
                         scheduler.tick()
                         await asyncio.sleep(1)
 
-                asyncio.create_task(clear_slots())
-                asyncio.create_task(tick_loop())
+                _tick_task = asyncio.create_task(tick_loop())
 
                 current_mode: str | None = None
+                _last_mode = None
                 mode_task:    asyncio.Task | None = None
                 _np_blocked_logged = False
 
                 while True:
                     if not scheduler.get_display_on():
+                        if current_mode:
+                            asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
                         await _cancel(mode_task)
                         mode_task = current_mode = None
                         last_brightness_sent = -1
@@ -324,6 +355,7 @@ async def run() -> None:
                         md_display.stop_weather()
                         async with ble_lock:
                             await client.send_image_hex(_BLACK, ".png")
+                        asyncio.create_task(webhooks.fire_device("on_power_off"))
                         print(f"{_ts()} [power] Display off — black screen.")
                         _black_ts = time.time()
                         while not scheduler.get_display_on():
@@ -333,10 +365,13 @@ async def run() -> None:
                                     await client.send_image_hex(_BLACK, ".png")
                                 _black_ts = time.time()
                         np_poller.resume()
+                        asyncio.create_task(webhooks.fire_device("on_power_on"))
                         print(f"{_ts()} [power] Display on — resuming.")
                         continue
 
                     if not _is_active_hour():
+                        if current_mode:
+                            asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
                         await _cancel(mode_task)
                         mode_task = current_mode = None
                         last_brightness_sent = -1
@@ -344,15 +379,25 @@ async def run() -> None:
                         md_display.stop_weather()
                         async with ble_lock:
                             await client.send_image_hex(_BLACK, ".png")
-                        print(f"{_ts()} [hours] Black screen.")
-                        _black_ah_ts = time.time()
-                        while not _is_active_hour():
-                            await config.wait_for_change(timeout=30)
-                            if time.time() - _black_ah_ts >= 15 * 60:
+                        asyncio.create_task(webhooks.fire_device("on_active_end"))
+                        print(f"{_ts()} [hours] Black screen — grace period (2min).")
+                        _grace_start = time.time()
+                        while not _is_active_hour() and time.time() - _grace_start < 120:
+                            await asyncio.sleep(10)
+                            if not _is_active_hour():
                                 async with ble_lock:
                                     await client.send_image_hex(_BLACK, ".png")
-                                _black_ah_ts = time.time()
+                        if not _is_active_hour():
+                            print(f"{_ts()} [hours] Grace period done — sleeping.")
+                            _black_ah_ts = time.time()
+                            while not _is_active_hour():
+                                await config.wait_for_change(timeout=30)
+                                if time.time() - _black_ah_ts >= 15 * 60:
+                                    async with ble_lock:
+                                        await client.send_image_hex(_BLACK, ".png")
+                                    _black_ah_ts = time.time()
                         np_poller.resume()
+                        asyncio.create_task(webhooks.fire_device("on_active_start"))
                         print(f"{_ts()} [hours] Active hours resumed.")
                         continue
 
@@ -366,11 +411,28 @@ async def run() -> None:
                     if _np_blocked_logged and not clearing[0]:
                         _np_blocked_logged = False
 
+                    if mode_task and mode_task.done() and not mode_task.cancelled():
+                        exc = mode_task.exception()
+                        if exc is not None:
+                            if current_mode:
+                                asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
+                                _last_mode = None
+                            raise exc
+
                     if mode != current_mode or (mode_task and mode_task.done()):
+                        if current_mode and current_mode != mode:
+                            await webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode))
                         await _cancel(mode_task)
+                        prev_mode = current_mode
                         current_mode = mode
+                        _last_mode = mode
                         last_brightness_sent = -1
                         print(f"{_ts()} [mode] → {mode}")
+                        if mode != prev_mode:
+                            async def _delayed_enter(m, ctx):
+                                await asyncio.sleep(0.5)
+                                await webhooks.fire(m, "on_enter", ctx)
+                            asyncio.create_task(_delayed_enter(mode, _mode_color_ctx(mode)))
 
                         if mode == "clock":
                             mode_task = asyncio.create_task(
@@ -402,6 +464,11 @@ async def run() -> None:
             return
         except Exception as e:
             api.set_connected(False)
+            if _last_mode:
+                asyncio.create_task(webhooks.fire(_last_mode, "on_exit", _mode_color_ctx(_last_mode)))
+                _last_mode = None
+            if _disconnect_at is None:
+                _disconnect_at = time.time()
             print(f"{_ts()} Connection lost: {e}")
             print(f"{_ts()} Retrying in {RECONNECT_DELAY}s ...")
             await asyncio.sleep(RECONNECT_DELAY)

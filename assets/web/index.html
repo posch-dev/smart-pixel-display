@@ -86,6 +86,7 @@
       <div class="row-right"><input type="color" id="cl_color" onchange="save('clock','color',hexToRgb(this.value))"></div>
     </div>
   </div>
+  <div id="wh-clock"></div>
 </div>
 </div>
 
@@ -137,6 +138,7 @@
       </div>
     </div>
   </div>
+  <div id="wh-verse"></div>
 </div>
 </div>
 
@@ -183,6 +185,7 @@
       </div>
     </div>
   </div>
+  <div id="wh-np"></div>
 </div>
 </div>
 
@@ -226,30 +229,31 @@
       </div>
     </div>
   </div>
-</div>
 
-<div class="card" style="margin-top:16px">
-  <div class="card-title">Weather</div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Provider</div></div>
-    <div class="row-right" style="flex:1;max-width:195px"><select id="w_provider" style="width:100%" onchange="saveWeather()"><option value="openmeteo">Open-Meteo</option><option value="wttr">wttr.in</option><option value="nws">NWS (USA only)</option></select></div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">Weather</div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Provider</div></div>
+      <div class="row-right" style="flex:1;max-width:195px"><select id="w_provider" style="width:100%" onchange="onWeatherProviderChange()"><option value="openmeteo">Open-Meteo</option><option value="wttr">wttr.in</option><option value="nws">NWS (USA only)</option></select></div>
+    </div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Units</div></div>
+      <div class="row-right" style="flex:1;max-width:195px"><select id="w_units" style="width:100%" onchange="saveWeather()"><option value="metric">Metric (°C)</option><option value="imperial">Imperial (°F)</option></select></div>
+    </div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Latitude</div></div>
+      <div class="row-right"><input type="number" id="w_lat" step="0.0001" style="width:115px" onchange="saveWeather()"></div>
+    </div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Longitude</div></div>
+      <div class="row-right"><input type="number" id="w_lon" step="0.0001" style="width:115px" onchange="saveWeather()"></div>
+    </div>
+    <div class="row" id="w_location_row">
+      <div class="row-left"><div class="row-label">City Name</div><div class="row-sub">Overrides lat/lon</div></div>
+      <div class="row-right" style="flex:1;max-width:165px"><input type="text" id="w_location" style="width:100%" placeholder="e.g. Vienna" onchange="saveWeather()"></div>
+    </div>
   </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Units</div></div>
-    <div class="row-right" style="flex:1;max-width:195px"><select id="w_units" style="width:100%" onchange="saveWeather()"><option value="metric">Metric (°C)</option><option value="imperial">Imperial (°F)</option></select></div>
-  </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Latitude</div></div>
-    <div class="row-right"><input type="number" id="w_lat" step="0.0001" style="width:115px" onchange="saveWeather()"></div>
-  </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Longitude</div></div>
-    <div class="row-right"><input type="number" id="w_lon" step="0.0001" style="width:115px" onchange="saveWeather()"></div>
-  </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">City Name</div><div class="row-sub">wttr.in only — overrides lat/lon</div></div>
-    <div class="row-right" style="flex:1;max-width:165px"><input type="text" id="w_location" style="width:100%" placeholder="e.g. Vienna" onchange="saveWeather()"></div>
-  </div>
+  <div id="wh-dash"></div>
 </div>
 </div>
 
@@ -282,13 +286,13 @@
     <div class="row-right"><input type="number" id="reconnect_delay" min="1" max="30" step="0.5" style="width:75px" onchange="save('device','reconnect_delay',+this.value)"></div>
   </div>
   <div class="row">
-    <div class="row-left"><div class="row-label">Active Hours</div><div class="row-sub">Always on when enabled</div></div>
-    <div class="row-right" style="gap:6px">
-      <span style="font-size:12px;color:var(--muted)">Always on</span>
+    <div class="row-left"><div class="row-label">Active Hours</div><div class="row-sub">Restrict display to an hour range</div></div>
+    <div class="row-right" style="gap:6px;flex-wrap:wrap;justify-content:flex-end">
       <label class="toggle"><input type="checkbox" id="d_always_on" onchange="toggleActiveHours(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      <span style="color:var(--muted);font-size:12px">Always on</span>
     </div>
   </div>
-  <div class="row" id="d_hours_row">
+  <div class="row" id="d_hours_row" style="display:none">
     <div class="row-left"><div class="row-label row-label-dim">Hour Range</div></div>
     <div class="row-right" style="gap:5px">
       <input type="number" id="d_hour_from" min="0" max="23" style="width:50px" placeholder="6" onchange="saveActiveHours()">
@@ -297,6 +301,7 @@
       <span style="font-size:12px;color:var(--muted)">h</span>
     </div>
   </div>
+  <div id="wh-device"></div>
 </div>
 </div>
 </div>
@@ -319,6 +324,49 @@
 
 <div id="trigger-cards"></div>
 
+</div>
+</div>
+
+<div id="wh-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeWebhookModal()">
+<div class="modal wh-modal">
+  <div class="modal-title">Webhook</div>
+  <input type="hidden" id="wh-edit-section">
+  <input type="hidden" id="wh-edit-idx" value="-1">
+  <div class="row">
+    <div class="row-left"><div class="row-label">Trigger</div></div>
+    <div class="row-right" style="flex:1;max-width:220px"><select id="wh-trigger" style="width:100%"></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Method</div></div>
+    <div class="row-right" style="flex:1;max-width:220px"><select id="wh-method" style="width:100%" onchange="onWhMethodChange()"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">URL</div></div>
+    <div class="row-right" style="flex:1"><input type="text" id="wh-url" style="width:100%" placeholder="https://..."></div>
+  </div>
+  <div class="row" style="align-items:flex-start">
+    <div class="row-left"><div class="row-label">Headers</div></div>
+    <div class="row-right" style="flex:1;flex-direction:column;gap:6px">
+      <div id="wh-headers-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addHeaderRow()">+ Header</button>
+    </div>
+  </div>
+  <div class="row" id="wh-body-row" style="align-items:flex-start">
+    <div class="row-left"><div class="row-label">Body</div></div>
+    <div class="row-right" style="flex:1"><textarea id="wh-body" rows="3" class="wh-textarea" placeholder='{"color": "{{accent1_hex}}"}'></textarea></div>
+  </div>
+  <div class="row" id="wh-vars-row" style="display:none;align-items:flex-start">
+    <div class="row-left">
+      <button class="btn btn-ghost btn-sm" onclick="toggleVarPanel()" id="wh-vars-btn">Variables ▸</button>
+    </div>
+    <div class="row-right" style="flex:1">
+      <div id="wh-vars" style="display:none"></div>
+    </div>
+  </div>
+  <div style="padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
+    <button class="btn btn-ghost" onclick="closeWebhookModal()">Cancel</button>
+    <button class="btn btn-accent" onclick="saveWebhook()">Save</button>
+  </div>
 </div>
 </div>
 

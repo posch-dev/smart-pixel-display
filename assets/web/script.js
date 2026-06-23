@@ -96,7 +96,10 @@ function toggleEnabled(mode, enabled) {
   const prefix = MODULE_PREFIX[mode];
   const el = document.getElementById(prefix + '_settings');
   if (el) el.style.display = enabled ? '' : 'none';
+  cfg[mode] = cfg[mode] || {};
+  cfg[mode].enabled = enabled;
   save(mode, 'enabled', enabled);
+  updateTriggerCardStates();
 }
 
 function toggleUseGlobal(mode, useGlobal) {
@@ -249,6 +252,7 @@ function buildTriggerCards() {
       <div class="mode-trigger-header">
         <div class="badge-active-dot"></div>
         <div class="mode-trigger-name">${LABELS[mode]}</div>
+        <span class="disabled-badge" style="display:none;font-size:10px;color:var(--muted);margin-left:auto">disabled</span>
       </div>
 
       <div class="trig-row">
@@ -295,6 +299,23 @@ function buildTriggerCards() {
       </div>
     `;
     container.appendChild(card);
+  });
+  updateTriggerCardStates();
+}
+
+function updateTriggerCardStates() {
+  MODES.forEach(mode => {
+    const card = document.getElementById('tcard-' + mode);
+    if (!card) return;
+    const section = mode === 'clock' ? 'clock' : mode;
+    const enabled = cfg[section]?.enabled ?? true;
+    card.classList.toggle('trig-disabled', !enabled);
+    const badge = card.querySelector('.disabled-badge');
+    if (badge) badge.style.display = enabled ? 'none' : '';
+    card.querySelectorAll('input, button.btn-hold, button.btn-accent').forEach(el => {
+      if (!enabled) el.disabled = true;
+      else el.disabled = false;
+    });
   });
 }
 
@@ -441,11 +462,13 @@ function populate() {
   setField('md_hours_before', md.hours_before_event ?? 2.0);
   document.getElementById('md_hours_before_row').style.display = (md.auto_trigger_before_event ?? false) ? '' : 'none';
 
-  setField('w_provider', w.provider ?? 'openmeteo');
+  const provider = w.provider ?? 'openmeteo';
+  setField('w_provider', provider);
   setField('w_units',    w.units    ?? 'metric');
   setField('w_lat',      w.lat ?? '');
   setField('w_lon',      w.lon ?? '');
   setField('w_location', w.location ?? '');
+  document.getElementById('w_location_row').style.display = provider === 'wttr' ? '' : 'none';
 }
 
 async function loadStatus() {
@@ -495,6 +518,11 @@ function saveHours() {
     +document.getElementById('v_hour_to').value
   ]);
 }
+function onWeatherProviderChange() {
+  const provider = document.getElementById('w_provider').value;
+  document.getElementById('w_location_row').style.display = provider === 'wttr' ? '' : 'none';
+  saveWeather();
+}
 function saveWeather() {
   save('dashboard','weather',{
     provider: document.getElementById('w_provider').value,
@@ -541,10 +569,271 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { bumpActivity(); loadStatus(); }
 });
 
+const WH_TRIGGERS = {
+  clock:        ['on_enter', 'on_exit'],
+  verse_of_day: ['on_enter', 'on_exit'],
+  nowplaying:   ['on_enter', 'on_exit', 'on_song_change'],
+  dashboard:    ['on_enter', 'on_exit'],
+  device:       ['on_power_on', 'on_power_off', 'on_active_start', 'on_active_end'],
+};
+const WH_TRIGGER_LABELS = {
+  on_enter: 'On Enter', on_exit: 'On Exit', on_song_change: 'On Song Change',
+  on_power_on: 'Power On', on_power_off: 'Power Off',
+  on_active_start: 'Active Hours Start', on_active_end: 'Active Hours End',
+};
+const WH_VAR_GROUPS = [
+  { label: 'Track', vars: ['title','artist','album'] },
+  { label: 'Hex', vars: ['accent1_hex','accent2_hex','accent3_hex'] },
+  { label: 'RGB', vars: ['accent1_rgb','accent2_rgb','accent3_rgb'] },
+  { label: 'R / G / B', vars: [
+    'accent1_r','accent1_g','accent1_b',
+    'accent2_r','accent2_g','accent2_b',
+    'accent3_r','accent3_g','accent3_b',
+  ]},
+  { label: 'HSV', vars: ['accent1_hsv','accent2_hsv','accent3_hsv'] },
+  { label: 'H / S / V', vars: [
+    'accent1_h','accent1_s','accent1_v',
+    'accent2_h','accent2_s','accent2_v',
+    'accent3_h','accent3_s','accent3_v',
+  ]},
+  { label: 'Full Brightness Hex', vars: ['accent1_full_hex','accent2_full_hex','accent3_full_hex'] },
+  { label: 'Full Brightness RGB', vars: ['accent1_full_rgb','accent2_full_rgb','accent3_full_rgb'] },
+  { label: 'Full Brightness R / G / B', vars: [
+    'accent1_full_r','accent1_full_g','accent1_full_b',
+    'accent2_full_r','accent2_full_g','accent2_full_b',
+    'accent3_full_r','accent3_full_g','accent3_full_b',
+  ]},
+];
+const METHODS_WITH_BODY = new Set(['POST','PUT','PATCH']);
+
+function toggleWebhooksEnabled(section, enabled) {
+  cfg[section] = cfg[section] || {};
+  cfg[section].webhooks_enabled = enabled;
+  save(section, 'webhooks_enabled', enabled);
+  const card = document.getElementById('wh-' + _whContainerId(section));
+  const inner = card?.querySelector('.wh-card-inner');
+  if (inner) inner.style.display = enabled ? '' : 'none';
+}
+
+function _whContainerId(section) {
+  return {clock:'clock', verse_of_day:'verse', nowplaying:'np', dashboard:'dash', device:'device'}[section] || section;
+}
+
+function buildWebhookCard(section, containerId) {
+  const hooks = cfg[section]?.webhooks || [];
+  const enabled = cfg[section]?.webhooks_enabled ?? false;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+
+  const card = document.createElement('div');
+  card.className = 'card wh-card';
+
+  const title = document.createElement('div');
+  title.className = 'card-title';
+  title.innerHTML = `Webhooks
+    <label class="toggle" style="margin-left:auto">
+      <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleWebhooksEnabled('${section}',this.checked)">
+      <div class="t-track"></div><div class="t-thumb"></div>
+    </label>`;
+  card.appendChild(title);
+
+  const inner = document.createElement('div');
+  inner.className = 'wh-card-inner';
+  inner.style.display = enabled ? '' : 'none';
+
+  if (hooks.length === 0) {
+    inner.innerHTML = `<div style="padding:12px 16px;font-size:12px;color:var(--muted)">No webhooks configured</div>`;
+  }
+  hooks.forEach((h, i) => {
+    const item = document.createElement('div');
+    item.className = 'wh-item';
+    item.innerHTML = `
+      <div class="wh-item-method">${(h.method||'GET').toUpperCase()}</div>
+      <div class="wh-item-info" style="cursor:pointer" onclick="openWebhookModal('${section}',${i})">
+        <div class="wh-item-trigger">${WH_TRIGGER_LABELS[h.trigger] || h.trigger}</div>
+        <div class="wh-item-url">${h.url || '(no url)'}</div>
+      </div>
+      <button class="wh-del" onclick="deleteWebhook('${section}',${i})">×</button>
+    `;
+    inner.appendChild(item);
+  });
+
+  const addRow = document.createElement('div');
+  addRow.style.cssText = 'padding:8px 16px;border-top:1px solid var(--border)';
+  addRow.innerHTML = `<button class="btn btn-accent btn-sm" onclick="openWebhookModal('${section}',-1)">+ Add Webhook</button>`;
+  inner.appendChild(addRow);
+
+  card.appendChild(inner);
+  container.appendChild(card);
+}
+
+function addHeaderRow(key, value) {
+  const list = document.getElementById('wh-headers-list');
+  const row = document.createElement('div');
+  row.className = 'wh-header-row';
+  row.innerHTML = `
+    <input type="text" placeholder="Key" value="${key || ''}" style="flex:1">
+    <input type="text" placeholder="Value" value="${value || ''}" style="flex:1.5">
+    <button class="wh-header-del" onclick="this.parentElement.remove()">×</button>
+  `;
+  list.appendChild(row);
+}
+
+function _getHeadersFromUI() {
+  const obj = {};
+  document.querySelectorAll('#wh-headers-list .wh-header-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const k = inputs[0].value.trim();
+    const v = inputs[1].value.trim();
+    if (k) obj[k] = v;
+  });
+  return obj;
+}
+
+function onWhMethodChange() {
+  const method = document.getElementById('wh-method').value;
+  document.getElementById('wh-body-row').style.display = METHODS_WITH_BODY.has(method) ? '' : 'none';
+}
+
+let _varsOpen = false;
+
+function _buildVarButtons(section) {
+  const container = document.getElementById('wh-vars');
+  const row = document.getElementById('wh-vars-row');
+  container.innerHTML = '';
+  _varsOpen = false;
+  container.style.display = 'none';
+  document.getElementById('wh-vars-btn').textContent = 'Variables ▸';
+
+  if (section !== 'nowplaying') {
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = '';
+  WH_VAR_GROUPS.forEach(group => {
+    const sec = document.createElement('div');
+    sec.className = 'wh-vars-group';
+    sec.innerHTML = `<div class="wh-vars-group-label">${group.label}</div>`;
+    const wrap = document.createElement('div');
+    wrap.className = 'wh-vars';
+    group.vars.forEach(v => {
+      const btn = document.createElement('button');
+      btn.className = 'wh-var-btn';
+      btn.textContent = `{{${v}}}`;
+      btn.onclick = () => _insertVar(v);
+      wrap.appendChild(btn);
+    });
+    sec.appendChild(wrap);
+    container.appendChild(sec);
+  });
+}
+
+function toggleVarPanel() {
+  _varsOpen = !_varsOpen;
+  document.getElementById('wh-vars').style.display = _varsOpen ? '' : 'none';
+  document.getElementById('wh-vars-btn').textContent = _varsOpen ? 'Variables ▾' : 'Variables ▸';
+}
+
+function _insertVar(name) {
+  const ta = document.getElementById('wh-body');
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const text = `{{${name}}}`;
+  ta.value = ta.value.substring(0, start) + text + ta.value.substring(end);
+  ta.selectionStart = ta.selectionEnd = start + text.length;
+  ta.focus();
+}
+
+function openWebhookModal(section, idx) {
+  document.getElementById('wh-edit-section').value = section;
+  document.getElementById('wh-edit-idx').value = idx;
+
+  const sel = document.getElementById('wh-trigger');
+  sel.innerHTML = '';
+  (WH_TRIGGERS[section] || []).forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = WH_TRIGGER_LABELS[t] || t;
+    sel.appendChild(opt);
+  });
+
+  document.getElementById('wh-headers-list').innerHTML = '';
+
+  if (idx >= 0) {
+    const hook = (cfg[section]?.webhooks || [])[idx] || {};
+    sel.value = hook.trigger || '';
+    document.getElementById('wh-method').value = (hook.method || 'GET').toUpperCase();
+    document.getElementById('wh-url').value = hook.url || '';
+    document.getElementById('wh-body').value = hook.body || '';
+    if (hook.headers && typeof hook.headers === 'object') {
+      Object.entries(hook.headers).forEach(([k, v]) => addHeaderRow(k, v));
+    }
+  } else {
+    document.getElementById('wh-method').value = 'POST';
+    document.getElementById('wh-url').value = '';
+    document.getElementById('wh-body').value = '';
+  }
+
+  onWhMethodChange();
+  _buildVarButtons(section);
+  document.getElementById('wh-modal-overlay').classList.add('show');
+}
+
+function closeWebhookModal() {
+  document.getElementById('wh-modal-overlay').classList.remove('show');
+}
+
+async function saveWebhook() {
+  const section = document.getElementById('wh-edit-section').value;
+  const idx = +document.getElementById('wh-edit-idx').value;
+  const method = document.getElementById('wh-method').value;
+  const headers = _getHeadersFromUI();
+
+  const hook = {
+    trigger: document.getElementById('wh-trigger').value,
+    method,
+    url: document.getElementById('wh-url').value,
+  };
+  if (Object.keys(headers).length) hook.headers = headers;
+  if (METHODS_WITH_BODY.has(method)) {
+    const body = document.getElementById('wh-body').value;
+    if (body) hook.body = body;
+  }
+
+  cfg[section] = cfg[section] || {};
+  cfg[section].webhooks = cfg[section].webhooks || [];
+  if (idx >= 0 && idx < cfg[section].webhooks.length) {
+    cfg[section].webhooks[idx] = hook;
+  } else {
+    cfg[section].webhooks.push(hook);
+  }
+
+  await save(section, 'webhooks', cfg[section].webhooks);
+  closeWebhookModal();
+  refreshAllWebhookCards();
+}
+
+async function deleteWebhook(section, idx) {
+  cfg[section] = cfg[section] || {};
+  cfg[section].webhooks = cfg[section].webhooks || [];
+  cfg[section].webhooks.splice(idx, 1);
+  await save(section, 'webhooks', cfg[section].webhooks);
+  refreshAllWebhookCards();
+}
+
+function refreshAllWebhookCards() {
+  buildWebhookCard('clock', 'wh-clock');
+  buildWebhookCard('verse_of_day', 'wh-verse');
+  buildWebhookCard('nowplaying', 'wh-np');
+  buildWebhookCard('dashboard', 'wh-dash');
+  buildWebhookCard('device', 'wh-device');
+}
+
 async function init() {
   cfg = await fetch('/config').then(r => r.json());
   populate();
   buildTriggerCards();
+  refreshAllWebhookCards();
   await loadStatus();
   _pollTimer = setInterval(_tick, POLL_ACTIVE);
 }

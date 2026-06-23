@@ -35,6 +35,10 @@ flip_horizontal = true
 active_hours    = [6, 22]     # display only runs between these hours
 ```
 
+## Webhooks
+
+Supports `on_enter` and `on_exit` webhooks.
+
 ## Running standalone
 
 ```bash

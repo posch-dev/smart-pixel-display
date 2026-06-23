@@ -104,6 +104,10 @@ curl -X POST http://<pi-ip>:5000/calendar \
 
 Omit `_travel_minutes` for Mode 2 (event shown without departure countdown).
 
+## Webhooks
+
+Supports `on_enter` and `on_exit` webhooks.
+
 ## Running standalone
 
 ```bash

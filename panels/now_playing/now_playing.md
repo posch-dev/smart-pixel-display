@@ -8,7 +8,7 @@ Shows the currently scrobbling track from Last.fm or Libre.fm with album art, ti
 |---|---|---|
 | ![go away](../../.github/assets/nowplaying_go_away.gif) | ![trying on shoes](../../.github/assets/nowplaying_trying_on_shoes.gif) | ![All The Love](../../.github/assets/nowplaying_all_the_love.gif) |
 
-The left 32 pixels show the album cover, fetched from iTunes and brightness-boosted for dark images. When no cover is found you get a colored gradient with a music note instead. The center column shows the track title in light blue at the top, artist and album below in accent colors pulled from the cover. Text that doesn't fit the column gets clipped. The right 32 pixels are an 8-bar frequency visualizer that pulses to the BPM, bar heights shaped by the genre preset (more bass for hip hop, higher for pop, etc.) with colors from the cover accents. The bottom two pixel rows are the progress bar, filling left to right as the track plays.
+The left 32 pixels show the album cover, fetched from iTunes and brightness-boosted for dark images. When no cover is found, a fallback placeholder is shown instead. The center column shows the track title in light blue at the top, artist and album below in accent colors picked from the cover. Text that doesn't fit the column gets clipped. The right 32 pixels are an 8-bar frequency visualizer that pulses to the BPM, bar heights shaped by the genre preset (more bass for hip hop, higher for pop, etc.) with colors from the cover accents. The bottom two pixel rows are the progress bar, filling left to right as the track plays.
 
 ## Priority
 
@@ -83,10 +83,22 @@ poll_s     = 0.5        # poll interval in seconds (min 0.25 for Last.fm, min 1.
 slot_a     = 0          # BLE slot for primary GIF
 slot_b     = 1          # BLE slot for standby GIF
 chunk_s    = 20         # seconds per GIF chunk before re-rendering
-font       = 1          # 1-4, selects the text font
+font       = 3          # 1=PressStart2P  2=HIAIRP22  3=MinecraftStandard  4=pcsenior
 ```
 
 The genre preset (the frequency curve that shapes the visualizer bars) is picked automatically from Last.fm genre tags. All presets are in `panels/now_playing/genre_presets.py`.
+
+## Webhooks
+
+Now Playing supports `on_enter`, `on_exit`, and `on_song_change` webhooks. `on_song_change` fires when a new song is actually displayed (after GIF upload and slot switch, not just on detect) and includes template variables for accent colors and track info:
+
+- `{{title}}`, `{{artist}}`, `{{album}}`
+- `{{accent1_hex}}`, `{{accent1_rgb}}`, `{{accent1_r}}`, `{{accent1_g}}`, `{{accent1_b}}`
+- `{{accent1_hsv}}`, `{{accent1_h}}`, `{{accent1_s}}`, `{{accent1_v}}`
+- `{{accent1_full_hex}}`, `{{accent1_full_rgb}}`, `{{accent1_full_r/g/b}}` (same hue at 100% brightness)
+- Same for `accent2` and `accent3`
+
+Full-brightness variants are the same hue but at max value, for things like WLED that handle brightness on their own.
 
 ## Running standalone
 

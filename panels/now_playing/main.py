@@ -16,6 +16,7 @@ import dns_patch          # patch DNS before any HTTP calls  # noqa: F401
 import poller
 import display
 import assets.system.config as config
+import assets.system.webhooks as webhooks
 from pypixelcolor import AsyncClient
 from PIL import Image
 
@@ -46,7 +47,6 @@ def _other(slot: int) -> int:
 
 
 def _beat_chunk_s(bpm: int | None, target_s: float = CHUNK_S) -> float:
-    # Align chunk duration to the nearest whole number of GIF loops.
     if not bpm:
         return target_s
     gif_s = (60.0 / bpm) * 2          # GIF = frames_per_beat * 2 at FRAME_MS
@@ -58,7 +58,8 @@ async def _send_black(client: AsyncClient) -> None:
     await client.send_image_hex(_BLACK_HEX, ".png")
 
 
-async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = False) -> None:
+async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = False,
+                  ble_lock: asyncio.Lock | None = None) -> None:
     t0 = time.monotonic()
     label = " [quick]" if quick else ""
     print(f"{_ts()} [main] rendering GIF{label}  elapsed={state['elapsed_s']:.0f}s ...")
@@ -69,23 +70,32 @@ async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = Fal
     path = os.path.join(tempfile.gettempdir(), f"nowplaying_{slot}.gif")
     with open(path, "wb") as f:
         f.write(gif)
-    await client.send_image(path, save_slot=slot)
+    if ble_lock:
+        async with ble_lock:
+            await client.send_image(path, save_slot=slot)
+    else:
+        await client.send_image(path, save_slot=slot)
     print(f"{_ts()} [main] slot {slot} ready ({time.monotonic()-t1:.1f}s upload)")
 
 
-async def _safe_delete(client: AsyncClient, slot: int) -> None:
+async def _safe_delete(client: AsyncClient, slot: int, ble_lock: asyncio.Lock | None = None) -> None:
     try:
-        await client.delete(slot)
-    except Exception:
+        if ble_lock:
+            async with ble_lock:
+                await client.delete(slot)
+        else:
+            await client.delete(slot)
+    except (asyncio.TimeoutError, OSError):
         pass
 
 
-async def _black_keepalive(client: AsyncClient) -> None:
+async def _black_keepalive(client: AsyncClient, ble_lock: asyncio.Lock | None = None) -> None:
     while True:
-        try:
+        if ble_lock:
+            async with ble_lock:
+                await _send_black(client)
+        else:
             await _send_black(client)
-        except Exception:
-            pass
         await asyncio.sleep(1.0)
 
 
@@ -98,9 +108,17 @@ async def _cancel_task(t: asyncio.Task | None) -> None:
             pass
 
 
-async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: int | None = None) -> None:
+async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: int | None = None,
+                   ble_lock: asyncio.Lock | None = None) -> None:
+    font_n = config.get("nowplaying", "font", 3)
+    display.set_font(font_n)
+
     if initial_black:
-        await _send_black(client)
+        if ble_lock:
+            async with ble_lock:
+                await _send_black(client)
+        else:
+            await _send_black(client)
         print(f"{_ts()} [main] black screen active")
 
     _brightness_applied = False
@@ -116,6 +134,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
 
     chunk_start_mono: float = 0.0
     chunk_elapsed_s:  float = 0.0
+    displayed_song:   tuple | None = None
     current_chunk_s:  float = CHUNK_S
     switch_on_ready:  bool  = False
     active_bpm:       int | None = None
@@ -149,7 +168,6 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 raw_key if raw_key and play_counts.get(raw_key, 0) <= MAX_REPS else None
             )
 
-            # reset the debounce timer when a song is detected
             if song_key is not None:
                 nothing_since = None
 
@@ -164,7 +182,6 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     await asyncio.sleep(POLL_S)
                     continue
                 if next_song is not None and not state["playing"]:
-                    # Current song expired → promote queued song
                     print(f"{_ts()} [main] current expired — promoting: {next_song[1]} — {next_song[0]}")
                     current_song    = next_song
                     chunk_elapsed_s = 0.0
@@ -174,12 +191,11 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     # Fall through to execute the switch
 
                 elif current_song is not None:
-                    # Song ended, nothing queued → black screen + cleanup
                     print(f"{_ts()} [main] nothing playing")
                     await _cancel_task(standby_task)
                     standby_task = None
-                    await _safe_delete(client, SLOT_A)
-                    await _safe_delete(client, SLOT_B)
+                    await _safe_delete(client, ble_lock=ble_lock, slot=SLOT_A)
+                    await _safe_delete(client, ble_lock=ble_lock, slot=SLOT_B)
                     active_slot     = None
                     standby_slot    = None
                     current_song    = None
@@ -187,13 +203,13 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     next_song_state = None
                     switch_on_ready = False
                     if black_task is None or black_task.done():
-                        black_task = asyncio.create_task(_black_keepalive(client))
+                        black_task = asyncio.create_task(_black_keepalive(client, ble_lock))
                     await asyncio.sleep(POLL_S)
                     continue
 
                 else:
                     if black_task is None or black_task.done():
-                        black_task = asyncio.create_task(_black_keepalive(client))
+                        black_task = asyncio.create_task(_black_keepalive(client, ble_lock))
                     await asyncio.sleep(POLL_S)
                     continue
 
@@ -204,7 +220,6 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
             if song_key is not None and song_key != current_song and song_key != next_song:
 
                 if in_last and current_song is not None:
-                # Last 10s of current song, queue the next one and start rendering in background
                     print(f"{_ts()} [main] last {LAST_10}s, queuing: {state['artist']} — {state['title']}")
                     ns = dict(state)
                     ns["elapsed_s"] = 0.0
@@ -215,7 +230,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                             standby_task.cancel()
                         tgt = _other(active_slot) if active_slot else SLOT_A
                         standby_slot    = tgt
-                        standby_task    = asyncio.create_task(_upload(client, ns, tgt))
+                        standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
                         standby_elapsed = 0.0
                         standby_song    = song_key
                         switch_on_ready = False
@@ -232,7 +247,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     ns["elapsed_s"] = 0.0
                     tgt = _other(active_slot) if active_slot else SLOT_A
                     standby_slot    = tgt
-                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, quick=quick))
+                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, quick=quick, ble_lock=ble_lock))
                     standby_elapsed = 0.0
                     standby_song    = song_key
                     switch_on_ready = True
@@ -244,16 +259,27 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
 
             if switch_on_ready and standby_task is not None and standby_task.done():
                 if standby_task.cancelled() or standby_task.exception() is not None:
-                    if not standby_task.cancelled():
-                        print(f"{_ts()} [main] upload failed: {standby_task.exception()}")
+                    exc = standby_task.exception() if not standby_task.cancelled() else None
+                    if exc is not None:
+                        print(f"{_ts()} [main] upload failed: {exc}")
+                        raise exc
                     standby_task    = None
                     switch_on_ready = False
                 elif standby_song == current_song:
                     print(f"{_ts()} [main] switching to slot {standby_slot}")
-                    await client.show_slot(standby_slot)
-                    if brightness is not None and not _brightness_applied:
-                        await client.set_brightness(brightness)
-                        _brightness_applied = True
+                    if ble_lock:
+                        async with ble_lock:
+                            await client.show_slot(standby_slot)
+                            if brightness is not None and not _brightness_applied:
+                                await client.set_brightness(brightness)
+                                _brightness_applied = True
+                    else:
+                        await client.show_slot(standby_slot)
+                        if brightness is not None and not _brightness_applied:
+                            await client.set_brightness(brightness)
+                            _brightness_applied = True
+                    song_changed     = displayed_song != current_song
+                    displayed_song   = current_song
                     old              = active_slot
                     active_slot      = standby_slot
                     standby_slot     = _other(active_slot)
@@ -264,7 +290,17 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     standby_song     = None
                     active_bpm       = state.get("bpm")
                     if old is not None:
-                        await _safe_delete(client, old)
+                        await _safe_delete(client, ble_lock=ble_lock, slot=old)
+                    if song_changed:
+                        accents = display.last_accents or ((0,0,0),(0,0,0),(0,0,0))
+                        asyncio.create_task(webhooks.fire("nowplaying", "on_song_change", {
+                            "title": state.get("title", ""),
+                            "artist": state.get("artist", ""),
+                            "album": state.get("album", ""),
+                            "accent1": accents[0],
+                            "accent2": accents[1],
+                            "accent3": accents[2],
+                        }))
 
             if (active_slot is not None
                     and current_song == song_key
@@ -279,7 +315,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 ns["elapsed_s"] = chunk_elapsed_s
                 tgt = _other(active_slot)
                 standby_slot    = tgt
-                standby_task    = asyncio.create_task(_upload(client, ns, tgt))
+                standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
                 standby_elapsed = chunk_elapsed_s
                 standby_song    = song_key
                 switch_on_ready = True
@@ -296,11 +332,10 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     tgt = _other(active_slot)
                     print(f"{_ts()} [main] preparing chunk elapsed={next_chunk_elapsed:.0f}s → slot {tgt}")
                     standby_slot    = tgt
-                    standby_task    = asyncio.create_task(_upload(client, ns, tgt))
+                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
                     standby_elapsed = next_chunk_elapsed
                     standby_song    = song_key
 
-                # Switch at chunk boundary
                 if (time_in_chunk >= current_chunk_s
                         and standby_task is not None
                         and standby_task.done()
@@ -308,10 +343,17 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                         and standby_task.exception() is None
                         and standby_song == current_song):
                     print(f"{_ts()} [main] chunk boundary → slot {standby_slot}")
-                    await client.show_slot(standby_slot)
-                    if brightness is not None and not _brightness_applied:
-                        await client.set_brightness(brightness)
-                        _brightness_applied = True
+                    if ble_lock:
+                        async with ble_lock:
+                            await client.show_slot(standby_slot)
+                            if brightness is not None and not _brightness_applied:
+                                await client.set_brightness(brightness)
+                                _brightness_applied = True
+                    else:
+                        await client.show_slot(standby_slot)
+                        if brightness is not None and not _brightness_applied:
+                            await client.set_brightness(brightness)
+                            _brightness_applied = True
                     old              = active_slot
                     active_slot      = standby_slot
                     standby_slot     = _other(active_slot)
@@ -320,12 +362,16 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     standby_task     = None
                     standby_song     = None
                     if old is not None:
-                        await _safe_delete(client, old)
+                        await _safe_delete(client, ble_lock=ble_lock, slot=old)
+
+            new_font = config.get("nowplaying", "font", 3)
+            if new_font != font_n:
+                font_n = new_font
+                display.set_font(font_n)
 
             await asyncio.sleep(POLL_S)
 
     finally:
-        # Cancel sub-tasks so they don't outlive run_loop (CancelledError or otherwise)
         await _cancel_task(black_task)
         await _cancel_task(standby_task)
 

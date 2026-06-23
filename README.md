@@ -38,14 +38,23 @@ The scheduler handles switching automatically. Now Playing triggers when it dete
 
 ## Setup
 
-### 1. Clone Repository and install dependencies
+**Prerequisites:** Python 3.11+, python3-venv, Bluetooth
+
+### 1. Clone and install
 
 ```bash
-git clone https://github.com//smart-pixel-dashboard.git
-cd smart-pixel-Dashboard
+git clone https://github.com/posch-dev/smart-pixel-dashboard.git
+cd smart-pixel-dashboard
+./install.sh
+```
 
-pip3 install -r requirements.txt --break-system-packages
-# or use: pip3 install -r requirements.txt
+The install script creates a `.venv` in the repo, installs all dependencies, and sets up a systemd service (`smartpixeldashboard`).
+
+If you prefer doing it manually:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ### 2. Configure your device
@@ -83,28 +92,28 @@ Clock and Dashboard work out of the box, no keys needed. Now Playing supports [L
 
 ### 3. Start
 
-run `startup.py`. The web UI will be at `http://<device-ip>:5000`.
+```bash
+source .venv/bin/activate
+python startup.py
+```
 
-You can also run each panel standalone, without the web UI:
+The web UI will be at `http://<device-ip>:5000`.
+
+You can also run each panel standalone:
 ```bash
 python panels/<panel>/main.py
 ```
 
-#### 3.1 Running on boot (Optional)
+#### 3.1 Running on boot (optional)
 
-run 'install.sh' to setup systemd service:
-
-```bash
-./install.sh
-```
-
-##### 3.1.1 Managing the autostart Service:
+If you ran `./install.sh`, the systemd service is already set up:
 
 ```bash
-sudo systemctl status smartpixelpanel    # Check status
-sudo systemctl restart smartpixelpanel   # Restart
-sudo systemctl stop smartpixelpanel      # Stop
-journalctl -u smartpixelpanel -f         # View live logs
+sudo systemctl start smartpixeldashboard      # Start
+sudo systemctl status smartpixeldashboard     # Check status
+sudo systemctl restart smartpixeldashboard    # Restart
+sudo systemctl stop smartpixeldashboard       # Stop
+journalctl -u smartpixeldashboard -f          # Live logs
 ```
 
 ## Configuration
@@ -131,25 +140,33 @@ scrobbler  = "lastfm"          # "lastfm" or "librefm"
 
 [dashboard]
 [dashboard.weather]
-lat      = 48.2082
-lon      = 16.3738
+lat      = 40.7580
+lon      = -73.9855
 units    = "metric"            # "metric" or "imperial"
 ```
 
+Each panel supports webhooks* that fire HTTP requests on `on_enter` and `on_exit`. Device-level webhooks fire on power on/off and active hours start/end.
+
+\*Now Playing also supports `on_song_change`, which fires when a new song is displayed. It has template variables for accent colors (`{{accent1_hex}}`, `{{accent1_rgb}}`, `{{accent1_full_r}}`, etc.), track info (`{{title}}`, `{{artist}}`, `{{album}}`), and full-brightness color variants for external devices like WLED.
+
 ## Web UI and API
 
-The web UI at port 5000 lets you switch panels, adjust brightness, and change settings. The REST API:
+The web UI at port 5000 lets you switch panels, adjust brightness, configure webhooks, and change settings. The REST API:
 
 ```
 GET    /status                 - active mode, connected state, clearing status
+POST   /display/power          - turn display on/off: {"on": true/false}
+GET    /mode                   - current mode, triggers, display state
 POST   /mode/trigger/{name}   - trigger a mode: clock | verse_of_day | nowplaying | dashboard
 DELETE /mode/{name}           - untrigger a mode (returns to scheduler)
 POST   /mode/reset            - clear all manual triggers, hand back to auto-scheduler
 POST   /calendar              - push a calendar event to the dashboard
+GET    /calendar              - list all calendar events
 DELETE /calendar              - clear all calendar events
-GET    /dashboard/status      - current dashboard data
+POST   /dashboard/trigger     - manually trigger dashboard
+GET    /dashboard/status      - current dashboard data (weather + calendar)
 GET    /config                - full config dump
-POST   /config/{section}/{key} - update a config value
+POST   /config/{section}/{key} - update a config value: {"value": ...}
 ```
 
 ## License

@@ -1,5 +1,3 @@
-# Central API for config, scheduler control, and dashboard endpoints.
-
 import os
 import sys
 import logging
@@ -14,10 +12,26 @@ sys.path.insert(0, os.path.join(_root, "panels", "dashboard"))
 
 import assets.system.config as config
 import assets.system.scheduler as scheduler
+import assets.system.webhooks as webhooks
 import calendar_store
 import weather as weather_mod
 
 app = Flask(__name__)
+
+
+def _mode_color_ctx(mode: str) -> dict | None:
+    color = config.get(mode, "color")
+    if isinstance(color, (list, tuple)) and len(color) == 3:
+        return {"accent1": tuple(color)}
+    return None
+
+
+def _fire_webhook_from_thread(section: str, trigger: str) -> None:
+    if config._loop is not None:
+        ctx = _mode_color_ctx(section)
+        config._loop.call_soon_threadsafe(
+            lambda: config._loop.create_task(webhooks.fire(section, trigger, ctx)))
+
 _web = os.path.join(_root, "assets", "web")
 
 _ble_connected: bool = False
@@ -32,6 +46,10 @@ def set_connected(connected: bool) -> None:
 def set_clearing(clearing: bool) -> None:
     global _clearing
     _clearing = clearing
+
+
+def is_ready() -> bool:
+    return _ble_connected and not _clearing
 
 
 def _in_active_hours() -> bool:
@@ -109,22 +127,21 @@ def untrigger_mode(mode):
 @app.post("/mode/reset")
 def reset_scheduler():
     for m in scheduler.MODES:
-        if m != "clock":
-            scheduler.untrigger(m)
+        scheduler.untrigger(m)
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 
 @app.post("/calendar")
 def receive_calendar():
     data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "expected a JSON object"}), 400
-    calendar_store.append_event(data)
+    if isinstance(data, dict) and data:
+        calendar_store.append_event(data)
+        print(f"[calendar] +1 event: {data.get('title', '?')!r}")
+    else:
+        print(f"[calendar] push received (no event data)")
     if config.get("dashboard", "auto_trigger_on_calendar", True):
         scheduler.trigger("dashboard", source="auto")
-        print(f"[calendar] +1 event: {data.get('title', '?')!r} — dashboard triggered")
-    else:
-        print(f"[calendar] +1 event: {data.get('title', '?')!r}")
+        print(f"[calendar] dashboard triggered")
     return jsonify({"ok": True}), 200
 
 

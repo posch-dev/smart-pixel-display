@@ -162,7 +162,6 @@ def _draw_clock(draw: ImageDraw.ImageDraw, now: datetime, colon_on: bool,
     _put(draw, x, y, hh, font, C_DEEPBLUE)
     x += w_hh
 
-    # two dots for the blinking colon separator, centered vertically
     if colon_on:
         dot_x   = x + (col_w - COLON_DOT) // 2
         gap     = 1
@@ -253,7 +252,6 @@ def _update_deg_wiggle() -> None:
 
 
 def _draw_weather_icon(img: Image.Image, condition: str, x: int, y: int) -> None:
-    # Paste weather icon at (x, y). Icons are 14×14 px and fit exactly.
     icon = _load_icon(condition)
     if icon is None:
         return
@@ -278,7 +276,6 @@ def _load_logo(filename: str) -> Image.Image | None:
 
 
 def _draw_calendar_overlay(img: Image.Image, now: datetime, ix: int, iy: int) -> None:
-    # Render month abbrev + day number over the calendar icon at pixel (ix, iy).
     draw    = ImageDraw.Draw(img)
     month_s = now.strftime("%b").upper()
     day_s   = str(now.day)
@@ -301,7 +298,7 @@ def _draw_calendar_overlay(img: Image.Image, now: datetime, ix: int, iy: int) ->
 
 
 def _today_event_info(now: datetime):
-    # Returns (has_events, leave_in, leave_time_str, title, start_s, end_s). Mode 3 with travel, Mode 2 without.
+    # Returns (has_events, leave_in, leave_time_str, title, start_s, end_s). Mode 3 with travel, mode 2 without.
     GRACE       = timedelta(minutes=20)
     WORTH_IT    = 28   # minutes remaining at arrival to be worth going
 
@@ -431,7 +428,6 @@ def _draw_temp(draw: ImageDraw.ImageDraw, w: dict, x_offset: int = 0) -> tuple[i
     hw = _tw(draw, high_s, f8)
     lw = _tw(draw, low_s,  f8)
 
-    # bottom-align temp to display bottom
     bb    = draw.textbbox((0, 0), temp_s, f_num)
     bb8   = draw.textbbox((0, 0), high_s, f8)
     h_num = bb[3]  - bb[1]
@@ -441,7 +437,6 @@ def _draw_temp(draw: ImageDraw.ImageDraw, w: dict, x_offset: int = 0) -> tuple[i
     y_low  = H - h_8            # low bottom-aligned
     y_high = y_low  - h_8 - 2   # high directly above low, 2px up total
 
-    # x layout: temp number, degree symbol, gap, then high/low column
     x_temp = x_offset
     x_deg  = x_temp + tw - 1   # degree sits at top-right of number
     x_hilo = x_deg  + 4 + GAP
@@ -583,7 +578,6 @@ def _add_clearing_pixel(hex_frame: str) -> str:
 
 
 async def run_with_client(client: AsyncClient, clearing=None, ble_lock=None) -> None:
-    # Inner display loop, caller owns the BLE connection.
     global _weather_task
     if _weather_task is None or _weather_task.done():
         _weather_task = asyncio.create_task(_weather_fetcher())

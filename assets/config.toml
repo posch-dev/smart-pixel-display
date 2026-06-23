@@ -56,6 +56,6 @@ hours_before_event        = 2.0    # hours before departure to trigger (departur
 [dashboard.weather]
 provider = "openmeteo"          # openmeteo | wttr | nws (USA only)
 units    = "metric"             # metric (°C) | imperial (°F)
-lat      = 48.2082              # latitude  (Stephansplatz, Vienna)
-lon      = 16.3731              # longitude (Stephansplatz, Vienna)
-# location = "Vienna"           # optional city name for wttr instead of lat/lon
+lat      = 40.7580              # latitude  (Times Square, NYC)
+lon      = -73.9855             # longitude (Times Square, NYC)
+# location = "New York"         # optional city name for wttr instead of lat/lon

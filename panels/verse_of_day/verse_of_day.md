@@ -44,6 +44,10 @@ active_hours     = [7, 10]          # hours when auto-trigger can fire
 time_windows     = [[7, 11], [18, 25], [33, 41], [47, 56]]  # minute ranges within each hour
 ```
 
+## Webhooks
+
+Supports `on_enter` and `on_exit` webhooks.
+
 ## Running standalone
 
 ```bash
