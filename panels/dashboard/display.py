@@ -593,9 +593,9 @@ async def run_with_client(client: AsyncClient, clearing=None, ble_lock=None) -> 
             frame = _add_clearing_pixel(frame)
         if ble_lock:
             async with ble_lock:
-                await client.send_image_hex(frame, ".png")
+                await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=10)
         else:
-            await client.send_image_hex(frame, ".png")
+            await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=10)
         frame_count += 1
         elapsed = time.monotonic() - t_frame_start
         await asyncio.sleep(max(0.0, BLINK_S - elapsed))
@@ -639,8 +639,8 @@ async def run() -> None:
                     else:
                         w_frame = _weather
 
-                    await client.send_image_hex(
-                        render_frame(now, w_frame, colon_on, leave_blink_on, cal_override, now_color), ".png")
+                    await asyncio.wait_for(client.send_image_hex(
+                        render_frame(now, w_frame, colon_on, leave_blink_on, cal_override, now_color), ".png"), timeout=10)
                     frame_count += 1
                     elapsed = time.monotonic() - t_frame_start
                     await asyncio.sleep(max(0.0, BLINK_S - elapsed))

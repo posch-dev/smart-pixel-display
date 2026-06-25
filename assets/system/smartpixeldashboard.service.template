@@ -7,9 +7,11 @@ Wants=network-online.target
 Type=simple
 User=__USER__
 WorkingDirectory=__WORKDIR__
+ExecStartPre=-/usr/bin/bluetoothctl disconnect
 ExecStart=__WORKDIR__/.venv/bin/python __WORKDIR__/startup.py
-Restart=on-failure
+Restart=always
 RestartSec=10
+MemoryMax=250M
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

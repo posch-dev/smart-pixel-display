@@ -2,7 +2,7 @@ aiohttp>=3.9
 bleak>=0.21
 Flask>=3.0
 Pillow>=10.0
-pylast>=5.0
+pylast==6.0
 pypixelcolor>=0.4
 python-dotenv>=1.0
 requests>=2.28

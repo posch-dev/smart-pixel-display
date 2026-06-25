@@ -113,6 +113,11 @@ function toggleBeforeEvent(on) {
   save('dashboard', 'auto_trigger_before_event', on);
 }
 
+function toggleGrace(on) {
+  document.getElementById('md_grace_row').style.display = on ? '' : 'none';
+  save('dashboard', 'grace_minutes', on ? (+document.getElementById('md_grace_minutes').value || 10) : 0);
+}
+
 async function savePriority(mode, newPrio) {
   const oldPrio = cfg[mode]?.priority;
   const conflict = MODES.find(m => m !== mode && cfg[m]?.priority === newPrio);
@@ -461,6 +466,10 @@ function populate() {
   setField('md_before_event', md.auto_trigger_before_event ?? false);
   setField('md_hours_before', md.hours_before_event ?? 2.0);
   document.getElementById('md_hours_before_row').style.display = (md.auto_trigger_before_event ?? false) ? '' : 'none';
+  const graceMin = md.grace_minutes ?? 0;
+  setField('md_grace', graceMin > 0);
+  setField('md_grace_minutes', graceMin || 10);
+  document.getElementById('md_grace_row').style.display = graceMin > 0 ? '' : 'none';
 
   const provider = w.provider ?? 'openmeteo';
   setField('w_provider', provider);

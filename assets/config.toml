@@ -52,6 +52,7 @@ use_global_brightness = true
 auto_trigger_on_calendar  = true   # trigger dashboard when /calendar POST arrives
 auto_trigger_before_event = false  # auto-trigger X hours before event departure time
 hours_before_event        = 2.0    # hours before departure to trigger (departure = start - travel)
+grace_minutes             = 10     # minutes after departure (or start if no travel) to keep showing
 
 [dashboard.weather]
 provider = "openmeteo"          # openmeteo | wttr | nws (USA only)

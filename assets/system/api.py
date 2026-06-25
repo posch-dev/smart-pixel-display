@@ -160,11 +160,9 @@ def clear_calendar():
 
 @app.get("/dashboard/status")
 def dashboard_status():
-    try:
-        w = weather_mod.fetch_weather()
-        weather_text = weather_mod.format_weather(w)
-    except Exception as e:
-        weather_text = f"(weather error: {e})"
+    import panels.dashboard.display as display
+    w = display._weather
+    weather_text = weather_mod.format_weather(w) if w else "(no weather data cached)"
     import calendar_store as cs
     return jsonify({
         "calendar": cs.get_events(),

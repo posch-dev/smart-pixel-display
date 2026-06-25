@@ -46,6 +46,19 @@ def clear_events() -> None:
 
 
 def get_events() -> list[dict]:
+    global _events, _birthdays
+    today = datetime.now().date()
+    stale = []
+    for ev in _events:
+        try:
+            ev_date = datetime.fromisoformat(ev["start_time"]).date()
+            if ev_date < today:
+                stale.append(ev)
+        except (ValueError, KeyError):
+            pass
+    if stale:
+        _events = [e for e in _events if e not in stale]
+        _birthdays = [b for b in _birthdays if b not in stale]
     return _events
 
 

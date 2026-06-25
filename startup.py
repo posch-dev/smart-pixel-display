@@ -40,6 +40,7 @@ MAC_ADDRESS     = config.get("device", "mac_address")
 RECONNECT_DELAY = config.get("device", "reconnect_delay")
 BLINK_INTERVAL  = config.get("clock",  "blink_interval")
 MAX_SLOTS       = 256
+BLE_SEND_TIMEOUT = 5
 
 
 def _ts() -> str:
@@ -162,7 +163,7 @@ async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
         if clearing[0]:
             frame = _add_clearing_pixel(frame)
         async with ble_lock:
-            await client.send_image_hex(frame, ".png")
+            await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=BLE_SEND_TIMEOUT)
         colon_on = not colon_on
         await asyncio.sleep(BLINK_INTERVAL)
 
@@ -175,7 +176,7 @@ async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
             if clearing[0]:
                 frame = _add_clearing_pixel(frame)
             async with ble_lock:
-                await client.send_image_hex(frame, ".png")
+                await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=BLE_SEND_TIMEOUT)
         await asyncio.sleep(refresh)
 
 
@@ -229,8 +230,10 @@ async def _dashboard_event_watcher() -> None:
             continue
 
         hours_before = config.get("dashboard", "hours_before_event", 2.0)
+        grace_min = config.get("dashboard", "grace_minutes", 10)
         now = datetime.now(_LOCAL_TZ)
 
+        any_active = False
         events = calendar_store.get_events()
         for ev in events:
             if ev.get("is_all_day") or ev.get("isAllDay", False):
@@ -243,10 +246,12 @@ async def _dashboard_event_watcher() -> None:
             travel = ev.get("_travel_minutes")
             departure = start_dt - timedelta(minutes=travel) if travel else start_dt
             trigger_at = departure - timedelta(hours=hours_before)
+            grace_end = departure + timedelta(minutes=grace_min)
 
             ev_key = (ev.get("title", ""), ev.get("start_time", ""))
 
-            if trigger_at <= now < departure and ev_key not in triggered_keys:
+            if trigger_at <= now < grace_end:
+                any_active = True
                 triggered_keys.add(ev_key)
                 if not scheduler.has_user_trigger():
                     scheduler.trigger("dashboard", source="auto")
@@ -254,8 +259,10 @@ async def _dashboard_event_watcher() -> None:
                           f"{ev.get('title', '?')} (departs {departure.strftime('%H:%M')})")
                 break
 
-        still_valid = {(e.get("title", ""), e.get("start_time", "")) for e in events}
-        triggered_keys &= still_valid
+        if not any_active and triggered_keys:
+            scheduler.untrigger("dashboard")
+            triggered_keys.clear()
+            print(f"{_ts()} [event-watcher] grace expired — dashboard untriggered")
 
         await asyncio.sleep(60)
 
@@ -354,7 +361,7 @@ async def run() -> None:
                         np_poller.pause()
                         md_display.stop_weather()
                         async with ble_lock:
-                            await client.send_image_hex(_BLACK, ".png")
+                            await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                         asyncio.create_task(webhooks.fire_device("on_power_off"))
                         print(f"{_ts()} [power] Display off — black screen.")
                         _black_ts = time.time()
@@ -362,7 +369,7 @@ async def run() -> None:
                             await asyncio.sleep(0.5)
                             if time.time() - _black_ts >= 15 * 60:
                                 async with ble_lock:
-                                    await client.send_image_hex(_BLACK, ".png")
+                                    await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                                 _black_ts = time.time()
                         np_poller.resume()
                         asyncio.create_task(webhooks.fire_device("on_power_on"))
@@ -378,7 +385,7 @@ async def run() -> None:
                         np_poller.pause()
                         md_display.stop_weather()
                         async with ble_lock:
-                            await client.send_image_hex(_BLACK, ".png")
+                            await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                         asyncio.create_task(webhooks.fire_device("on_active_end"))
                         print(f"{_ts()} [hours] Black screen — grace period (2min).")
                         _grace_start = time.time()
@@ -386,7 +393,7 @@ async def run() -> None:
                             await asyncio.sleep(10)
                             if not _is_active_hour():
                                 async with ble_lock:
-                                    await client.send_image_hex(_BLACK, ".png")
+                                    await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                         if not _is_active_hour():
                             print(f"{_ts()} [hours] Grace period done — sleeping.")
                             _black_ah_ts = time.time()
@@ -394,7 +401,7 @@ async def run() -> None:
                                 await config.wait_for_change(timeout=30)
                                 if time.time() - _black_ah_ts >= 15 * 60:
                                     async with ble_lock:
-                                        await client.send_image_hex(_BLACK, ".png")
+                                        await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                                     _black_ah_ts = time.time()
                         np_poller.resume()
                         asyncio.create_task(webhooks.fire_device("on_active_start"))

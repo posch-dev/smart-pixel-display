@@ -26,8 +26,9 @@ SLOT_B   = config.get("nowplaying", "slot_b")
 CHUNK_S  = config.get("nowplaying", "chunk_s")
 PREP_S   = 8      # start preparing next chunk this many seconds before switch
 LAST_10  = 10     # if ≤ this many seconds remain, let current song finish
-MAX_REPS = 2      # same (title, artist) more than this many times → ignored
-POLL_S   = config.get("nowplaying", "poll_s")
+MAX_REPS   = 2      # same (title, artist) more than this many times → ignored
+COVER_WAIT = 10.0   # seconds to wait for cover before rendering with placeholder
+POLL_S     = config.get("nowplaying", "poll_s")
 
 def _black_hex() -> str:
     img = Image.new("RGB", (128, 32), (0, 0, 0))
@@ -137,7 +138,10 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
     displayed_song:   tuple | None = None
     current_chunk_s:  float = CHUNK_S
     switch_on_ready:  bool  = False
-    active_bpm:       int | None = None
+    active_bpm:        int | None = None
+    active_cover:      bool       = False
+    cover_wait_since:  float | None = None
+    cover_arrived_late: bool      = False
 
     play_counts:      dict  = {}
     last_counted:     tuple | None = None
@@ -158,6 +162,8 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 raw_key = None
 
             if raw_key and raw_key != last_counted:
+                if len(play_counts) > 25:
+                    play_counts.clear()
                 cnt = play_counts.get(raw_key, 0) + 1
                 play_counts[raw_key] = cnt
                 last_counted = raw_key
@@ -198,10 +204,11 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     await _safe_delete(client, ble_lock=ble_lock, slot=SLOT_B)
                     active_slot     = None
                     standby_slot    = None
-                    current_song    = None
-                    next_song       = None
-                    next_song_state = None
-                    switch_on_ready = False
+                    current_song     = None
+                    next_song        = None
+                    next_song_state  = None
+                    switch_on_ready  = False
+                    cover_wait_since = None
                     if black_task is None or black_task.done():
                         black_task = asyncio.create_task(_black_keepalive(client, ble_lock))
                     await asyncio.sleep(POLL_S)
@@ -236,26 +243,40 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                         switch_on_ready = False
 
                 else:
-                    # Immediate switch (let old slot keep playing until new is ready)
+                    print(f"{_ts()} [main] new song: {state['artist']} — {state['title']}  waiting for cover...")
+                    if standby_task and not standby_task.done():
+                        standby_task.cancel()
+                    standby_task    = None
+                    current_song       = song_key
+                    next_song          = None
+                    next_song_state    = None
+                    chunk_elapsed_s    = 0.0
+                    cover_wait_since   = now
+                    cover_arrived_late = False
+
+            if cover_wait_since is not None and current_song == song_key:
+                has_cover = state.get("cover") is not None
+                waited    = now - cover_wait_since
+                if has_cover or waited >= COVER_WAIT:
+                    if has_cover:
+                        print(f"{_ts()} [main] cover arrived after {waited:.1f}s — rendering")
+                    else:
+                        print(f"{_ts()} [main] no cover after {COVER_WAIT}s — rendering placeholder")
+                    state = poller.get_state()
                     bpm = state.get("bpm")
                     current_chunk_s = _beat_chunk_s(bpm)
                     quick = bpm is None
-                    print(f"{_ts()} [main] new song: {state['artist']} — {state['title']}  bpm={bpm}  chunk={current_chunk_s:.1f}s")
-                    if standby_task and not standby_task.done():
-                        standby_task.cancel()
                     ns = dict(state)
                     ns["elapsed_s"] = 0.0
                     tgt = _other(active_slot) if active_slot else SLOT_A
                     standby_slot    = tgt
                     standby_task    = asyncio.create_task(_upload(client, ns, tgt, quick=quick, ble_lock=ble_lock))
                     standby_elapsed = 0.0
-                    standby_song    = song_key
+                    standby_song    = current_song
                     switch_on_ready = True
-                    current_song    = song_key
-                    next_song       = None
-                    next_song_state = None
-                    chunk_elapsed_s = 0.0
                     active_bpm      = bpm
+                    active_cover    = has_cover
+                    cover_wait_since = None
 
             if switch_on_ready and standby_task is not None and standby_task.done():
                 if standby_task.cancelled() or standby_task.exception() is not None:
@@ -289,6 +310,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     standby_task     = None
                     standby_song     = None
                     active_bpm       = state.get("bpm")
+                    active_cover     = state.get("cover") is not None
                     if old is not None:
                         await _safe_delete(client, ble_lock=ble_lock, slot=old)
                     if song_changed:
@@ -301,6 +323,33 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                             "accent2": accents[1],
                             "accent3": accents[2],
                         }))
+                    if cover_arrived_late:
+                        cover_arrived_late = False
+                        accents = display.last_accents or ((0,0,0),(0,0,0),(0,0,0))
+                        asyncio.create_task(webhooks.fire("nowplaying", "on_song_change", {
+                            "title": state.get("title", ""),
+                            "artist": state.get("artist", ""),
+                            "album": state.get("album", ""),
+                            "accent1": accents[0],
+                            "accent2": accents[1],
+                            "accent3": accents[2],
+                        }))
+
+            metadata_arrived = False
+            if (active_slot is not None
+                    and current_song == song_key
+                    and not active_cover
+                    and state.get("cover") is not None
+                    and standby_task is None
+                    and not in_last):
+                active_cover       = True
+                metadata_arrived   = True
+                cover_arrived_late = True
+                bpm = state.get("bpm")
+                if bpm:
+                    active_bpm = bpm
+                    current_chunk_s = _beat_chunk_s(bpm)
+                print(f"{_ts()} [main] cover arrived — re-rendering")
 
             if (active_slot is not None
                     and current_song == song_key
@@ -309,8 +358,12 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     and standby_task is None
                     and not in_last):
                 bpm = state["bpm"]
+                active_bpm = bpm
                 current_chunk_s = _beat_chunk_s(bpm)
+                metadata_arrived = True
                 print(f"{_ts()} [main] BPM arrived ({bpm}) — re-rendering")
+
+            if metadata_arrived and standby_task is None:
                 ns = dict(state)
                 ns["elapsed_s"] = chunk_elapsed_s
                 tgt = _other(active_slot)

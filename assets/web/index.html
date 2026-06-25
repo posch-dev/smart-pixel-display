@@ -228,6 +228,17 @@
         <span style="font-size:12px;color:var(--muted)">h</span>
       </div>
     </div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Grace Period</div><div class="row-sub">Keep showing after departure/start</div></div>
+      <div class="row-right"><label class="toggle"><input type="checkbox" id="md_grace" onchange="toggleGrace(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+    </div>
+    <div class="row" id="md_grace_row" style="display:none">
+      <div class="row-left"><div class="row-label row-label-dim">Grace Minutes</div></div>
+      <div class="row-right" style="gap:5px">
+        <input type="number" id="md_grace_minutes" min="1" max="60" step="1" style="width:65px" onchange="save('dashboard','grace_minutes',+this.value)">
+        <span style="font-size:12px;color:var(--muted)">min</span>
+      </div>
+    </div>
   </div>
 
   <div class="card" style="margin-top:16px">

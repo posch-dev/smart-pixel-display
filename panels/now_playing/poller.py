@@ -5,6 +5,7 @@ import sys
 import time
 import datetime
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import pylast
 from dotenv import load_dotenv
@@ -55,14 +56,14 @@ def _fetch_cover(title: str, artist: str, size: int = 32) -> bytes | None:
         r = requests.get(
             "https://itunes.apple.com/search",
             params={"term": f"{artist} {title}", "media": "music", "limit": 1},
-            timeout=10,
+            timeout=15,
         )
         r.raise_for_status()
         results = r.json().get("results", [])
         if not results:
             return None
         url = results[0]["artworkUrl100"].replace("100x100bb", f"{size}x{size}bb")
-        img = requests.get(url, timeout=10)
+        img = requests.get(url, timeout=15)
         img.raise_for_status()
         return img.content
     except Exception as e:
@@ -152,64 +153,84 @@ def _poll_loop() -> None:
                     _song_start   = time.monotonic()
                     print(f"{_ts()} [poller] new song: {artist} — {title}")
 
-                    # Fetch everything except BPM synchronously (fast: 1-3s total)
-                    duration_s = None
-                    try:
-                        ms = track.get_duration()
-                        if ms:
-                            duration_s = ms / 1000
-                    except Exception:
-                        pass
-
-                    lastfm_tags = []
-                    try:
-                        lastfm_tags += [x.item.name for x in track.get_top_tags(limit=10)]
-                    except Exception:
-                        pass
-                    try:
-                        lastfm_tags += [x.item.name for x in _network.get_artist(artist).get_top_tags(limit=10)]
-                    except Exception:
-                        pass
-
-                    album_name = None
-                    try:
-                        album_obj  = track.get_album()
-                        album_name = album_obj.title if album_obj else None
-                    except Exception:
-                        pass
-
-                    preset = get_preset(lastfm_tags)
-                    cover  = _fetch_cover(title, artist)
-
                     with _lock:
                         _state.update({
                             "playing":      True,
                             "title":        title,
                             "artist":       artist,
-                            "album":        album_name,
-                            "duration_s":   duration_s,
+                            "album":        None,
+                            "duration_s":   None,
                             "elapsed_s":    0.0,
                             "bpm":          None,
                             "danceability": None,
                             "acousticness": None,
-                            "genres":       lastfm_tags,
-                            "preset":       preset,
-                            "cover":        cover,
+                            "genres":       [],
+                            "preset":       None,
+                            "cover":        None,
                         })
 
-                    cover_str  = "yes" if cover else "no"
-                    preset_str = f"bass={preset['bass_mult']} mids={preset['mids_mult']} highs={preset['highs_mult']}"
-                    print(f"{_ts()} [poller] duration={duration_s}s cover={cover_str} preset={preset_str}")
-                    print(f"{_ts()} [poller] tags: {', '.join(lastfm_tags[:5])}")
+                    def _fetch_metadata(_title=title, _artist=artist, _track=track):
+                        def _get_duration():
+                            try:
+                                ms = _track.get_duration()
+                                return ms / 1000 if ms else None
+                            except Exception:
+                                return None
 
-                    # BPM fetch runs in background, it's the slow one (API can take 10s+)
-                    def _fetch_bpm(_title=title, _artist=artist, _tags=lastfm_tags):
-                        track_data = get_track_data(_title, _artist, genres=_tags)
+                        def _get_track_tags():
+                            try:
+                                return [x.item.name for x in _track.get_top_tags(limit=10)]
+                            except Exception:
+                                return []
+
+                        def _get_artist_tags():
+                            try:
+                                return [x.item.name for x in _network.get_artist(_artist).get_top_tags(limit=10)]
+                            except Exception:
+                                return []
+
+                        def _get_album():
+                            try:
+                                obj = _track.get_album()
+                                return obj.title if obj else None
+                            except Exception:
+                                return None
+
+                        with ThreadPoolExecutor(max_workers=5) as pool:
+                            f_dur    = pool.submit(_get_duration)
+                            f_ttags  = pool.submit(_get_track_tags)
+                            f_atags  = pool.submit(_get_artist_tags)
+                            f_album  = pool.submit(_get_album)
+                            f_cover  = pool.submit(_fetch_cover, _title, _artist)
+
+                            duration_s  = f_dur.result()
+                            lastfm_tags = f_ttags.result() + f_atags.result()
+                            album_name  = f_album.result()
+                            cover       = f_cover.result()
+
+                        preset = get_preset(lastfm_tags)
+
+                        with _lock:
+                            if _state["title"] == _title and _state["artist"] == _artist:
+                                _state.update({
+                                    "album":      album_name,
+                                    "duration_s": duration_s,
+                                    "genres":     lastfm_tags,
+                                    "preset":     preset,
+                                    "cover":      cover,
+                                })
+
+                        cover_str  = "yes" if cover else "no"
+                        preset_str = f"bass={preset['bass_mult']} mids={preset['mids_mult']} highs={preset['highs_mult']}"
+                        print(f"{_ts()} [poller] duration={duration_s}s cover={cover_str} preset={preset_str}")
+                        print(f"{_ts()} [poller] tags: {', '.join(lastfm_tags[:5])}")
+
+                        track_data = get_track_data(_title, _artist, genres=lastfm_tags)
                         bpm          = track_data.get("bpm")
                         danceability = track_data.get("danceability")
                         acousticness = track_data.get("acousticness")
                         with _lock:
-                            if _state["title"] == _title:
+                            if _state["title"] == _title and _state["artist"] == _artist:
                                 _state.update({
                                     "bpm":          bpm,
                                     "danceability": danceability,
@@ -217,7 +238,7 @@ def _poll_loop() -> None:
                                 })
                         print(f"{_ts()} [bpm] {_title}: {bpm} BPM")
 
-                    threading.Thread(target=_fetch_bpm, daemon=True).start()
+                    threading.Thread(target=_fetch_metadata, daemon=True).start()
 
                 else:
                     with _lock:
