@@ -27,7 +27,7 @@ CHUNK_S  = config.get("nowplaying", "chunk_s")
 PREP_S   = 8      # start preparing next chunk this many seconds before switch
 LAST_10  = 10     # if ≤ this many seconds remain, let current song finish
 MAX_REPS   = 2      # same (title, artist) more than this many times → ignored
-COVER_WAIT = 10.0   # seconds to wait for cover before rendering with placeholder
+COVER_WAIT = 7.0    # seconds to wait for cover before rendering with placeholder
 POLL_S     = config.get("nowplaying", "poll_s")
 
 def _black_hex() -> str:
@@ -132,6 +132,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
     current_song:     tuple | None = None
     next_song:        tuple | None = None
     next_song_state:  dict | None  = None
+    next_cover_wait_since: float | None = None
 
     chunk_start_mono: float = 0.0
     chunk_elapsed_s:  float = 0.0
@@ -187,14 +188,20 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 if now - nothing_since < NOTHING_DEBOUNCE:
                     await asyncio.sleep(POLL_S)
                     continue
-                if next_song is not None and not state["playing"]:
+                if next_song is not None and not state["playing"] and (
+                        standby_task is not None and standby_task.done()):
                     print(f"{_ts()} [main] current expired — promoting: {next_song[1]} — {next_song[0]}")
-                    current_song    = next_song
-                    chunk_elapsed_s = 0.0
-                    next_song       = None
-                    next_song_state = None
-                    switch_on_ready = True
+                    current_song          = next_song
+                    chunk_elapsed_s       = 0.0
+                    next_song             = None
+                    next_song_state       = None
+                    next_cover_wait_since = None
+                    switch_on_ready       = True
                     # Fall through to execute the switch
+
+                elif next_song is not None and not state["playing"]:
+                    # Upcoming song's render isn't ready yet, keep showing the current slot until the resolution check below finishes it.
+                    pass
 
                 elif current_song is not None:
                     print(f"{_ts()} [main] nothing playing")
@@ -227,32 +234,50 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
             if song_key is not None and song_key != current_song and song_key != next_song:
 
                 if in_last and current_song is not None:
-                    print(f"{_ts()} [main] last {LAST_10}s, queuing: {state['artist']} — {state['title']}")
+                    print(f"{_ts()} [main] last {LAST_10}s, upcoming: {state['artist']} — {state['title']}  waiting for cover...")
                     ns = dict(state)
                     ns["elapsed_s"] = 0.0
-                    next_song       = song_key
-                    next_song_state = ns
-                    if standby_task is None or standby_task.done():
-                        if standby_task and not standby_task.cancelled():
-                            standby_task.cancel()
-                        tgt = _other(active_slot) if active_slot else SLOT_A
-                        standby_slot    = tgt
-                        standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
-                        standby_elapsed = 0.0
-                        standby_song    = song_key
-                        switch_on_ready = False
+                    next_song             = song_key
+                    next_song_state       = ns
+                    next_cover_wait_since = now
 
                 else:
                     print(f"{_ts()} [main] new song: {state['artist']} — {state['title']}  waiting for cover...")
                     if standby_task and not standby_task.done():
                         standby_task.cancel()
-                    standby_task    = None
-                    current_song       = song_key
-                    next_song          = None
-                    next_song_state    = None
-                    chunk_elapsed_s    = 0.0
-                    cover_wait_since   = now
-                    cover_arrived_late = False
+                    standby_task          = None
+                    current_song          = song_key
+                    next_song             = None
+                    next_song_state       = None
+                    next_cover_wait_since = None
+                    chunk_elapsed_s       = 0.0
+                    cover_wait_since      = now
+                    cover_arrived_late    = False
+
+            # Keep the queued song's known state fresh, in particular its cover, for as long as Last.fm still reports it as playing.
+            if next_song is not None and song_key == next_song:
+                ns = dict(state)
+                ns["elapsed_s"] = 0.0
+                next_song_state = ns
+
+            if (next_cover_wait_since is not None and next_song is not None
+                    and (standby_task is None or standby_task.done())):
+                ns_has_cover = bool(next_song_state and next_song_state.get("cover") is not None)
+                waited       = now - next_cover_wait_since
+                if ns_has_cover or waited >= COVER_WAIT:
+                    if ns_has_cover:
+                        print(f"{_ts()} [main] upcoming cover arrived after {waited:.1f}s — queuing render")
+                    else:
+                        print(f"{_ts()} [main] no cover after {COVER_WAIT}s for upcoming song — queuing placeholder render")
+                    if standby_task and not standby_task.cancelled():
+                        standby_task.cancel()
+                    tgt = _other(active_slot) if active_slot else SLOT_A
+                    standby_slot          = tgt
+                    standby_task          = asyncio.create_task(_upload(client, next_song_state, tgt, ble_lock=ble_lock))
+                    standby_elapsed       = 0.0
+                    standby_song          = next_song
+                    switch_on_ready       = False
+                    next_cover_wait_since = None
 
             if cover_wait_since is not None and current_song == song_key:
                 has_cover = state.get("cover") is not None

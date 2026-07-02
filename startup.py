@@ -171,7 +171,7 @@ async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
 async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
     refresh = config.get("verse_of_day", "refresh_interval", 30)
     while True:
-        frame = get_verse_frame()
+        frame = await asyncio.to_thread(get_verse_frame)
         if frame:
             if clearing[0]:
                 frame = _add_clearing_pixel(frame)
@@ -351,7 +351,15 @@ async def run() -> None:
                 mode_task:    asyncio.Task | None = None
                 _np_blocked_logged = False
 
+                def _out_of_hours() -> bool:
+                    return not _is_active_hour() and not scheduler.get_active_hours_override()
+
                 while True:
+                    if scheduler.get_active_hours_override() and _is_active_hour():
+                        # Active hours arrived naturally while a manual after-hours override was in effect, drop it so a future active-hours end auto-blacks normally again.
+                        scheduler.set_active_hours_override(False)
+                        scheduler.cancel_sleep_timer()
+
                     if not scheduler.get_display_on():
                         if current_mode:
                             asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
@@ -376,7 +384,7 @@ async def run() -> None:
                         print(f"{_ts()} [power] Display on — resuming.")
                         continue
 
-                    if not _is_active_hour():
+                    if _out_of_hours():
                         if current_mode:
                             asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
                         await _cancel(mode_task)
@@ -386,26 +394,34 @@ async def run() -> None:
                         md_display.stop_weather()
                         async with ble_lock:
                             await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
+                        # Silent, mirrors the manual power switch state for the UI without firing on_power_off (on_active_end already covers this transition).
+                        scheduler.set_display_on(False)
                         asyncio.create_task(webhooks.fire_device("on_active_end"))
                         print(f"{_ts()} [hours] Black screen — grace period (2min).")
                         _grace_start = time.time()
-                        while not _is_active_hour() and time.time() - _grace_start < 120:
+                        while _out_of_hours() and time.time() - _grace_start < 120:
                             await asyncio.sleep(10)
-                            if not _is_active_hour():
+                            if _out_of_hours():
                                 async with ble_lock:
                                     await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
-                        if not _is_active_hour():
+                        if _out_of_hours():
                             print(f"{_ts()} [hours] Grace period done — sleeping.")
                             _black_ah_ts = time.time()
-                            while not _is_active_hour():
-                                await config.wait_for_change(timeout=30)
-                                if time.time() - _black_ah_ts >= 15 * 60:
+                            while _out_of_hours():
+                                await config.wait_for_change(timeout=3)
+                                if _out_of_hours() and time.time() - _black_ah_ts >= 15 * 60:
                                     async with ble_lock:
                                         await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                                     _black_ah_ts = time.time()
                         np_poller.resume()
-                        asyncio.create_task(webhooks.fire_device("on_active_start"))
-                        print(f"{_ts()} [hours] Active hours resumed.")
+                        if _is_active_hour():
+                            scheduler.set_display_on(True)
+                            scheduler.set_active_hours_override(False)
+                            scheduler.cancel_sleep_timer()
+                            asyncio.create_task(webhooks.fire_device("on_active_start"))
+                            print(f"{_ts()} [hours] Active hours resumed.")
+                        else:
+                            print(f"{_ts()} [hours] Manually turned on outside active hours — resuming display.")
                         continue
 
                     mode = scheduler.get_active_mode()

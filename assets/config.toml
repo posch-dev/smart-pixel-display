@@ -9,6 +9,9 @@ flip_horizontal = true          # mirror left/right
 reconnect_delay = 3.0           # seconds before BLE reconnect attempt
 active_hours    = [6, 22]       # display on from 06:00 to 22:00; outside = black screen
                                 # remove this line to always be on
+after_hours_sleep_timer_enabled = false  # auto turn off again after N minutes when
+                                          # manually powered on outside active hours
+after_hours_sleep_timer_minutes = 30     # minutes for the above timer
 
 [clock]
 enabled        = true

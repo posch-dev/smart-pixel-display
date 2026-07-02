@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
@@ -94,12 +95,37 @@ def set_config(section, key):
     return jsonify({"ok": True, "section": section, "key": key, "value": body["value"]}), 200
 
 
+def _schedule_after_hours_sleep_timer(minutes: float) -> None:
+    if config._loop is None:
+        return
+
+    async def _timer():
+        await asyncio.sleep(minutes * 60)
+        if scheduler.get_active_hours_override() and not _in_active_hours():
+            scheduler.set_display_on(False)
+            scheduler.set_active_hours_override(False)
+            asyncio.create_task(webhooks.fire_device("on_power_off"))
+
+    def _start():
+        scheduler.set_sleep_timer_task(config._loop.create_task(_timer()))
+
+    config._loop.call_soon_threadsafe(_start)
+
+
 @app.post("/display/power")
 def set_display_power():
     body = request.get_json(silent=True)
     if body is None or "on" not in body:
         return jsonify({"error": 'expected {"on": bool}'}), 400
-    scheduler.set_display_on(bool(body["on"]))
+    on = bool(body["on"])
+    scheduler.set_display_on(on)
+    # Turning it on manually outside active hours keeps it on indefinitely (like an indefinite panel trigger) until manually turned off again, which always drops back to normal after-active-hours behavior.
+    override = on and not _in_active_hours()
+    scheduler.set_active_hours_override(override)
+    scheduler.cancel_sleep_timer()
+    if override and config.get("device", "after_hours_sleep_timer_enabled", False):
+        minutes = config.get("device", "after_hours_sleep_timer_minutes", 30)
+        _schedule_after_hours_sleep_timer(minutes)
     return jsonify({"ok": True, "display_on": scheduler.get_display_on()}), 200
 
 
@@ -112,7 +138,8 @@ def get_mode():
 def trigger_mode(mode):
     if mode not in scheduler.MODES:
         return jsonify({"error": f"unknown mode: {mode}"}), 400
-    scheduler.trigger(mode)
+    body = request.get_json(silent=True) or {}
+    scheduler.trigger(mode, expires_at=body.get("expires_at"))
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 

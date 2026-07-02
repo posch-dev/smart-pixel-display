@@ -158,7 +158,13 @@ async function save(section, key, value) {
   } catch(e) { toast('Error: ' + e.message, 'err'); }
 }
 
-async function apiTrigger(mode)   { await fetch(`/mode/trigger/${mode}`, {method:'POST'}); }
+async function apiTrigger(mode, expiresAtMs) {
+  await fetch(`/mode/trigger/${mode}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(expiresAtMs ? {expires_at: expiresAtMs / 1000} : {})
+  });
+}
 async function apiUntrigger(mode) { await fetch(`/mode/${mode}`, {method:'DELETE'}); }
 
 async function setManual(mode, on) {
@@ -197,7 +203,7 @@ async function startTimed(mode, totalMs) {
   if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
   if (mode !== 'nowplaying') await apiUntrigger('nowplaying');
   const expiresAt = Date.now() + totalMs;
-  await apiTrigger(mode);
+  await apiTrigger(mode, expiresAt);
   const intervalId = setInterval(async () => {
     if (Date.now() >= expiresAt) {
       clearInterval(timeds[mode]?.intervalId);
@@ -423,6 +429,11 @@ function populate() {
     document.getElementById('d_always_on').checked = true;
     document.getElementById('d_hours_row').style.display = 'none';
   }
+  const sleepEnabled = d.after_hours_sleep_timer_enabled ?? false;
+  setField('d_after_hours_sleep_enabled', sleepEnabled);
+  document.getElementById('d_after_hours_sleep_row').style.display = sleepEnabled ? '' : 'none';
+  setField('d_after_hours_sleep_minutes', d.after_hours_sleep_timer_minutes ?? 30);
+  nxt(document.getElementById('d_after_hours_sleep_minutes'), x=>x+'m');
 
   setField('cl_enabled',    cl.enabled);
   document.getElementById('prio-sel-clock').value = cl.priority ?? 1;
@@ -480,6 +491,52 @@ function populate() {
   document.getElementById('w_location_row').style.display = provider === 'wttr' ? '' : 'none';
 }
 
+function _reconcileTriggerState() {
+  const triggered = new Set(statusData.triggered || []);
+  const sources   = statusData.trigger_sources || {};
+  const expiries  = statusData.trigger_expires || {};
+
+  MODES.forEach(mode => {
+    // A "Hold to Trigger" press is a brief, local-only interaction, don't let a status poll landing mid-press reclassify it as a manual lock.
+    const holdBtn = document.querySelector(`.btn-hold.holding`);
+    if (holdBtn && holdBtn.closest(`#tcard-${mode}`)) return;
+
+    const isUserTriggered = triggered.has(mode) && sources[mode] === 'user';
+    const serverExpiresAt = expiries[mode] != null ? expiries[mode] * 1000 : null;
+
+    if (!isUserTriggered) {
+      manuals.delete(mode);
+      if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
+      syncTriggerControls(mode);
+      return;
+    }
+
+    if (serverExpiresAt) {
+      manuals.delete(mode);
+      if (!timeds[mode] || Math.abs(timeds[mode].expiresAt - serverExpiresAt) > 500) {
+        if (timeds[mode]) clearInterval(timeds[mode].intervalId);
+        const intervalId = setInterval(async () => {
+          if (Date.now() >= serverExpiresAt) {
+            clearInterval(timeds[mode]?.intervalId);
+            delete timeds[mode];
+            if (!manuals.has(mode)) await apiUntrigger(mode);
+            syncTriggerControls(mode);
+            updateTriggerUI(); loadStatus();
+          } else {
+            updateTriggerUI();
+          }
+        }, 1000);
+        timeds[mode] = {expiresAt: serverExpiresAt, intervalId};
+      }
+    } else {
+      // Indefinite user trigger with no local record (like after a page reload). Recover it as a manual lock instead of leaving it stuck untracked in the UI while the server keeps it triggered forever.
+      if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
+      manuals.add(mode);
+    }
+    syncTriggerControls(mode);
+  });
+}
+
 async function loadStatus() {
   try {
     statusData = await fetch('/status').then(r => r.json());
@@ -500,10 +557,16 @@ async function loadStatus() {
       const el = document.getElementById(id);
       if (el) el.style.display = clearing ? '' : 'none';
     });
+    _reconcileTriggerState();
     updateTriggerUI();
   } catch {
     _showConnecting();
   }
+}
+
+function toggleAfterHoursSleepTimer(enabled) {
+  document.getElementById('d_after_hours_sleep_row').style.display = enabled ? '' : 'none';
+  save('device', 'after_hours_sleep_timer_enabled', enabled);
 }
 
 function toggleActiveHours(alwaysOn) {

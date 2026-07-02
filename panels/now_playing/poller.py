@@ -5,7 +5,7 @@ import sys
 import time
 import datetime
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import requests
 import pylast
 from dotenv import load_dotenv
@@ -26,6 +26,9 @@ def _ts() -> str:
 _current_scrobbler: str | None = None
 _network: pylast._Network | None = None
 _user: pylast.User | None = None
+
+# Dedicated pool for the blocking get_now_playing() call so a hung Last.fm/Libre.fm request (like during a DNS/Pi-hole outage) can't freeze the poll loop forever, we just give up on that poll and retry next cycle.
+_np_call_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="np-call")
 
 
 def _ensure_network() -> None:
@@ -119,7 +122,11 @@ def _poll_loop() -> None:
         _running.wait()
         _ensure_network()
         try:
-            track = _user.get_now_playing()
+            try:
+                track = _np_call_pool.submit(_user.get_now_playing).result(timeout=15)
+            except FuturesTimeoutError:
+                print(f"{_ts()} [poller] get_now_playing() timed out after 15s")
+                track = None
 
             if track is None:
                 _none_count += 1
@@ -196,17 +203,33 @@ def _poll_loop() -> None:
                             except Exception:
                                 return None
 
-                        with ThreadPoolExecutor(max_workers=5) as pool:
+                        def _safe_result(fut, default, label):
+                            try:
+                                return fut.result(timeout=20)
+                            except FuturesTimeoutError:
+                                print(f"{_ts()} [poller] {label} fetch timed out after 20s")
+                                return default
+                            except Exception as e:
+                                print(f"{_ts()} [poller] {label} fetch failed: {e}")
+                                return default
+
+                        pool = ThreadPoolExecutor(max_workers=5)
+                        try:
                             f_dur    = pool.submit(_get_duration)
                             f_ttags  = pool.submit(_get_track_tags)
                             f_atags  = pool.submit(_get_artist_tags)
                             f_album  = pool.submit(_get_album)
                             f_cover  = pool.submit(_fetch_cover, _title, _artist)
 
-                            duration_s  = f_dur.result()
-                            lastfm_tags = f_ttags.result() + f_atags.result()
-                            album_name  = f_album.result()
-                            cover       = f_cover.result()
+                            duration_s  = _safe_result(f_dur, None, "duration")
+                            ttags       = _safe_result(f_ttags, [], "track tags")
+                            atags       = _safe_result(f_atags, [], "artist tags")
+                            album_name  = _safe_result(f_album, None, "album")
+                            cover       = _safe_result(f_cover, None, "cover")
+                            lastfm_tags = ttags + atags
+                        finally:
+                            # Don't block on stragglers, a hung request just finishes in the background and gets discarded.
+                            pool.shutdown(wait=False)
 
                         preset = get_preset(lastfm_tags)
 
