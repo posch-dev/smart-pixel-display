@@ -68,9 +68,12 @@ _VERSE_CACHE_DIR  = os.path.join(os.path.dirname(__file__), "panels", "verse_of_
 _VERSE_CACHE_GLOB = os.path.join(_VERSE_CACHE_DIR, ".verse_cache_*.json")
 _verse_frame:     str | None = None
 _verse_cache_key: str | None = None
+_verse_reference: str | None = None
 
 
 def _verse_key() -> str:
+    # Only the reference lookup is day-scoped; color/brightness/flip/font changes must
+    # re-render immediately without re-hitting the YouVersion API.
     color      = str(config.get("verse_of_day", "color", [125, 40, 125]))
     brightness = str(max(1, config.get("verse_of_day", "brightness", 100)))
     flip_v     = str(config.get("device", "flip_vertical",   False))
@@ -78,8 +81,8 @@ def _verse_key() -> str:
     font       = os.path.basename(_VERSE_FONT_PATH)
     return f"{datetime.now().strftime('%Y-%m-%d')}|{color}|{brightness}|{flip_v}|{flip_h}|{font}"
 
-def _verse_cache_path(key: str) -> str:
-    return os.path.join(_VERSE_CACHE_DIR, f".verse_cache_{key.split('|')[0]}.json")
+def _verse_cache_path() -> str:
+    return os.path.join(_VERSE_CACHE_DIR, f".verse_cache_{datetime.now().strftime('%Y-%m-%d')}.json")
 
 def _purge_old_verse_caches() -> None:
     today = datetime.now().strftime("%Y-%m-%d")
@@ -92,31 +95,32 @@ def _purge_old_verse_caches() -> None:
                 pass
 
 def get_verse_frame() -> str | None:
-    global _verse_frame, _verse_cache_key
+    global _verse_frame, _verse_cache_key, _verse_reference
     key = _verse_key()
     if _verse_frame and _verse_cache_key == key:
         return _verse_frame
     _purge_old_verse_caches()
-    cache_path = _verse_cache_path(key)
+    cache_path = _verse_cache_path()
+    cached: dict = {}
     if os.path.exists(cache_path):
         try:
             with open(cache_path, encoding="utf-8") as f:
-                saved = json.load(f)
-            if saved.get("key") == key:
-                _verse_frame = saved["frame"]
-                _verse_cache_key = key
-                print(f"{_ts()} [verse] Loaded from file cache.")
-                return _verse_frame
+                cached = json.load(f)
         except Exception:
-            pass
+            cached = {}
     try:
-        print(f"{_ts()} [verse] Fetching + rendering ...")
-        reference    = fetch_reference()
-        _verse_frame = render_reference(reference, DISPLAY_W, DISPLAY_H)
+        reference = cached.get("reference")
+        if reference is None:
+            print(f"{_ts()} [verse] Fetching ...")
+            reference = fetch_reference()
+        color = tuple(config.get("verse_of_day", "color", [125, 40, 125]))
+        _verse_frame = render_reference(reference, DISPLAY_W, DISPLAY_H, color=color)
         _verse_cache_key = key
+        _verse_reference = reference
+        cached.update({"reference": reference, "key": key, "frame": _verse_frame})
         with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump({"key": key, "frame": _verse_frame}, f)
-        print(f"{_ts()} [verse] Cached: {reference}")
+            json.dump(cached, f)
+        print(f"{_ts()} [verse] Rendered: {reference}")
     except Exception as e:
         print(f"{_ts()} [verse] Render failed: {e}")
         _verse_frame = _verse_cache_key = None
@@ -169,15 +173,29 @@ async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
 
 
 async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
-    refresh = config.get("verse_of_day", "refresh_interval", 30)
+    last_fired_reference = None
     while True:
+        refresh = config.get("verse_of_day", "refresh_interval", 30)
         frame = await asyncio.to_thread(get_verse_frame)
         if frame:
+            if _verse_reference and _verse_reference != last_fired_reference:
+                last_fired_reference = _verse_reference
+                color = tuple(config.get("verse_of_day", "color", [125, 40, 125]))
+                asyncio.create_task(webhooks.fire(
+                    "verse_of_day", "on_verse_change",
+                    {"reference": _verse_reference, "accent1": color},
+                ))
             if clearing[0]:
                 frame = _add_clearing_pixel(frame)
+            brightness = _get_active_brightness("verse_of_day")
             async with ble_lock:
                 await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=BLE_SEND_TIMEOUT)
-        await asyncio.sleep(refresh)
+                # Re-assert brightness right after the image write — some sends appear
+                # to reset it on-device, which otherwise leaves it wrong for hours.
+                await asyncio.wait_for(client.set_brightness(brightness), timeout=BLE_SEND_TIMEOUT)
+        # Wake immediately on any settings change (color, brightness, flip, refresh
+        # interval, ...) instead of waiting up to `refresh` seconds to re-render.
+        await config.wait_for_change(timeout=refresh)
 
 
 async def _nowplaying_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
@@ -370,7 +388,9 @@ async def run() -> None:
                         md_display.stop_weather()
                         async with ble_lock:
                             await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
-                        asyncio.create_task(webhooks.fire_device("on_power_off"))
+                        # Outside active hours this off/on toggle is an override session ending/starting,
+                        # so it gets the active_* triggers instead of the normal power_* ones.
+                        asyncio.create_task(webhooks.fire_device("on_power_off" if _is_active_hour() else "on_active_end"))
                         print(f"{_ts()} [power] Display off — black screen.")
                         _black_ts = time.time()
                         while not scheduler.get_display_on():
@@ -380,7 +400,7 @@ async def run() -> None:
                                     await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                                 _black_ts = time.time()
                         np_poller.resume()
-                        asyncio.create_task(webhooks.fire_device("on_power_on"))
+                        asyncio.create_task(webhooks.fire_device("on_power_on" if _is_active_hour() else "on_active_start"))
                         print(f"{_ts()} [power] Display on — resuming.")
                         continue
 
@@ -421,6 +441,7 @@ async def run() -> None:
                             asyncio.create_task(webhooks.fire_device("on_active_start"))
                             print(f"{_ts()} [hours] Active hours resumed.")
                         else:
+                            asyncio.create_task(webhooks.fire_device("on_active_start"))
                             print(f"{_ts()} [hours] Manually turned on outside active hours — resuming display.")
                         continue
 

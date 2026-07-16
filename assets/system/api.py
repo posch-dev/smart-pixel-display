@@ -104,7 +104,8 @@ def _schedule_after_hours_sleep_timer(minutes: float) -> None:
         if scheduler.get_active_hours_override() and not _in_active_hours():
             scheduler.set_display_on(False)
             scheduler.set_active_hours_override(False)
-            asyncio.create_task(webhooks.fire_device("on_power_off"))
+            # main loop in startup.py detects the display_on flip and fires
+            # on_active_end (we're outside active hours here) on its own.
 
     def _start():
         scheduler.set_sleep_timer_task(config._loop.create_task(_timer()))

@@ -18,7 +18,6 @@ BRIGHTNESS       = config.get("verse_of_day", "brightness")
 REFRESH_INTERVAL = config.get("verse_of_day", "refresh_interval")
 BACKGROUND       = (0, 0, 0)
 
-PURPLE     = tuple(config.get("verse_of_day", "color", [125, 40, 125]))
 FONT_PATH  = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts", "PerfectDOS_VGA_437.ttf")
 
 CROSS_W    = 21         # odd so center pixel is exact
@@ -135,15 +134,17 @@ def _truncate(text: str, size: int, max_w: int) -> str:
     return ""
 
 
-def _draw_cross(draw: ImageDraw.ImageDraw, x: int, display_h: int) -> None:
+def _draw_cross(draw: ImageDraw.ImageDraw, x: int, display_h: int, color: tuple) -> None:
     v_x = x + CROSS_W // 2 - CROSS_BAR // 2
     h_y = display_h // 3 - CROSS_BAR // 2
-    draw.rectangle([v_x, 0, v_x + CROSS_BAR - 1, display_h - 1], fill=PURPLE)
-    draw.rectangle([x, h_y, x + CROSS_W - 1, h_y + CROSS_BAR - 1], fill=PURPLE)
+    draw.rectangle([v_x, 0, v_x + CROSS_BAR - 1, display_h - 1], fill=color)
+    draw.rectangle([x, h_y, x + CROSS_W - 1, h_y + CROSS_BAR - 1], fill=color)
 
 
-def render_reference(text: str, display_w: int, display_h: int) -> str:
+def render_reference(text: str, display_w: int, display_h: int, color: tuple | None = None) -> str:
     # Render cross + book name + chapter:verse, centered on the display.
+    # Reads the color from config at call time (not import time) so a settings change takes effect immediately.
+    color = tuple(color) if color is not None else tuple(config.get("verse_of_day", "color", [125, 40, 125]))
     text_gap = display_h - BOOK_FONT_SIZE - NUM_FONT_SIZE
     if text_gap < 0:
         print(
@@ -167,8 +168,8 @@ def render_reference(text: str, display_w: int, display_h: int) -> str:
     max_text_w = display_w - CROSS_W - CROSS_GAP
 
     book     = _truncate(book, BOOK_FONT_SIZE, max_text_w)
-    book_img = _text_img(book,    BOOK_FONT_SIZE, PURPLE)
-    num_img  = _text_img(numbers, NUM_FONT_SIZE,  PURPLE)
+    book_img = _text_img(book,    BOOK_FONT_SIZE, color)
+    num_img  = _text_img(numbers, NUM_FONT_SIZE,  color)
 
     text_w  = max(book_img.width, num_img.width)
     total_w = CROSS_W + CROSS_GAP + text_w
@@ -177,7 +178,7 @@ def render_reference(text: str, display_w: int, display_h: int) -> str:
 
     img  = Image.new("RGB", (display_w, display_h), BACKGROUND)
     draw = ImageDraw.Draw(img)
-    _draw_cross(draw, x=start_x, display_h=display_h)
+    _draw_cross(draw, x=start_x, display_h=display_h, color=color)
 
     # book snaps to top, numbers centered under book and snapped to bottom
     num_x = text_x + (book_img.width - num_img.width) // 2

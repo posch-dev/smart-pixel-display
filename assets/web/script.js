@@ -643,13 +643,14 @@ document.addEventListener('visibilitychange', () => {
 
 const WH_TRIGGERS = {
   clock:        ['on_enter', 'on_exit'],
-  verse_of_day: ['on_enter', 'on_exit'],
+  verse_of_day: ['on_enter', 'on_exit', 'on_verse_change'],
   nowplaying:   ['on_enter', 'on_exit', 'on_song_change'],
   dashboard:    ['on_enter', 'on_exit'],
   device:       ['on_power_on', 'on_power_off', 'on_active_start', 'on_active_end'],
 };
 const WH_TRIGGER_LABELS = {
   on_enter: 'On Enter', on_exit: 'On Exit', on_song_change: 'On Song Change',
+  on_verse_change: 'On Verse Change',
   on_power_on: 'Power On', on_power_off: 'Power Off',
   on_active_start: 'Active Hours Start', on_active_end: 'Active Hours End',
 };
@@ -675,6 +676,12 @@ const WH_VAR_GROUPS = [
     'accent2_full_r','accent2_full_g','accent2_full_b',
     'accent3_full_r','accent3_full_g','accent3_full_b',
   ]},
+];
+const WH_VAR_GROUPS_VERSE = [
+  { label: 'Verse', vars: ['reference'] },
+  { label: 'Color', vars: ['accent1_hex','accent1_rgb','accent1_r','accent1_g','accent1_b'] },
+  { label: 'HSV', vars: ['accent1_hsv','accent1_h','accent1_s','accent1_v'] },
+  { label: 'Full Brightness', vars: ['accent1_full_hex','accent1_full_rgb','accent1_full_r','accent1_full_g','accent1_full_b'] },
 ];
 const METHODS_WITH_BODY = new Set(['POST','PUT','PATCH']);
 
@@ -778,12 +785,15 @@ function _buildVarButtons(section) {
   container.style.display = 'none';
   document.getElementById('wh-vars-btn').textContent = 'Variables ▸';
 
-  if (section !== 'nowplaying') {
+  const groups = section === 'nowplaying' ? WH_VAR_GROUPS
+    : section === 'verse_of_day' ? WH_VAR_GROUPS_VERSE
+    : null;
+  if (!groups) {
     row.style.display = 'none';
     return;
   }
   row.style.display = '';
-  WH_VAR_GROUPS.forEach(group => {
+  groups.forEach(group => {
     const sec = document.createElement('div');
     sec.className = 'wh-vars-group';
     sec.innerHTML = `<div class="wh-vars-group-label">${group.label}</div>`;
