@@ -169,6 +169,15 @@ GET    /config                - full config dump
 POST   /config/{section}/{key} - update a config value: {"value": ...}
 ```
 
+## Shortcuts
+
+Ready made iPhone shortcuts that talk to this API live in [posch-dev/apple-shortcuts](https://github.com/posch-dev/apple-shortcuts):
+
+| Shortcut | What it does |
+|---|---|
+| [Calendar to Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/calendar-to-dashboard) | Pushes today's events to `POST /calendar`, driving time included |
+| [Morning Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/morning-dashboard) | Runs the above from your alarm, only when you are at home |
+
 ## License
 
 GPL-3.0 - any software that uses or distributes this code must also be released under the same license.

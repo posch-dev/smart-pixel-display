@@ -104,6 +104,8 @@ curl -X POST http://<pi-ip>:5000/calendar \
 
 Omit `_travel_minutes` for Mode 2 (event shown without departure countdown).
 
+On iPhone you do not have to build that automation yourself. [Calendar to Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/calendar-to-dashboard) collects the day's events, asks Maps for the driving time and posts them here. [Morning Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/morning-dashboard) runs it from your alarm, but only when you are at home.
+
 ## Webhooks
 
 Supports `on_enter` and `on_exit` webhooks.
