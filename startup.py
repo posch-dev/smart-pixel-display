@@ -311,6 +311,12 @@ async def run() -> None:
     _last_mode: str | None = None
     FRESH_CONNECT_THRESHOLD = 120
 
+    # With active_hours set the schedule already decides, so this only applies to always-on setups.
+    _boot_powered_off = config.get("device", "start_powered_off", False) and _active_hours() is None
+    if _boot_powered_off:
+        scheduler.set_display_on(False)
+        print(f"{_ts()} [power] Starting powered off — waiting for manual power on.")
+
     while True:
         await _wait_for_active_hour()
 
@@ -388,9 +394,12 @@ async def run() -> None:
                         md_display.stop_weather()
                         async with ble_lock:
                             await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
-                        # Outside active hours this off/on toggle is an override session ending/starting,
-                        # so it gets the active_* triggers instead of the normal power_* ones.
-                        asyncio.create_task(webhooks.fire_device("on_power_off" if _is_active_hour() else "on_active_end"))
+                        if _boot_powered_off:
+                            _boot_powered_off = False   # boot black never turned anything off
+                        else:
+                            # Outside active hours this off/on toggle is an override session ending/starting,
+                            # so it gets the active_* triggers instead of the normal power_* ones.
+                            asyncio.create_task(webhooks.fire_device("on_power_off" if _is_active_hour() else "on_active_end"))
                         print(f"{_ts()} [power] Display off — black screen.")
                         _black_ts = time.time()
                         while not scheduler.get_display_on():

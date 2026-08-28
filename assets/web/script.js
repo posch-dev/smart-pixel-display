@@ -420,6 +420,7 @@ function populate() {
   setField('flip_v',        d.flip_vertical);
   setField('flip_h',        d.flip_horizontal);
   setField('reconnect_delay', d.reconnect_delay ?? 3);
+  setField('d_start_powered_off', d.start_powered_off ?? false);
   if (d.active_hours) {
     document.getElementById('d_always_on').checked = false;
     document.getElementById('d_hours_row').style.display = '';

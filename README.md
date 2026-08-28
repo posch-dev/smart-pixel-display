@@ -125,6 +125,7 @@ Everything lives in `assets/config.toml`. The web UI and API write changes back 
 active_hours    = [6, 22]      # display off outside these hours
 flip_vertical   = true         # for panels mounted upside-down
 flip_horizontal = true
+start_powered_off = false      # start black until powered on, needs active_hours unset
 
 [clock]
 brightness = 80

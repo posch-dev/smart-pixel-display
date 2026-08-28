@@ -297,6 +297,10 @@
     <div class="row-right"><input type="number" id="reconnect_delay" min="1" max="30" step="0.5" style="width:75px" onchange="save('device','reconnect_delay',+this.value)"></div>
   </div>
   <div class="row">
+    <div class="row-left"><div class="row-label">Start Powered Off</div><div class="row-sub">Stay black after startup until powered on manually &mdash; only when Active Hours are off</div></div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="d_start_powered_off" onchange="save('device','start_powered_off',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div class="row">
     <div class="row-left"><div class="row-label">Active Hours</div><div class="row-sub">Restrict display to an hour range</div></div>
     <div class="row-right" style="gap:6px;flex-wrap:wrap;justify-content:flex-end">
       <label class="toggle"><input type="checkbox" id="d_always_on" onchange="toggleActiveHours(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>

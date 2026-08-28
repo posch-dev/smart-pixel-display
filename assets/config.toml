@@ -12,6 +12,8 @@ active_hours    = [6, 22]       # display on from 06:00 to 22:00; outside = blac
 after_hours_sleep_timer_enabled = false  # auto turn off again after N minutes when
                                           # manually powered on outside active hours
 after_hours_sleep_timer_minutes = 30     # minutes for the above timer
+start_powered_off = false       # start black until powered on manually
+                                # only takes effect when active_hours is unset
 
 [clock]
 enabled        = true
