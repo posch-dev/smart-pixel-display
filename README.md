@@ -1,112 +1,210 @@
 # Smart Pixel Display
 
-A smart dashboard display for 128x32 RGB LED matrix panels. It runs on anything that has Python and Bluetooth (e.g Rasperry Pi Zero 2 w). The display itself just needs to support BLE and the pypixelcolor protocol (e.g. iPixel panel).
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![BLE](https://img.shields.io/badge/BLE-pypixelcolor-0082FC?logo=bluetooth&logoColor=white)](https://pypi.org/project/pypixelcolor/)
+[![Release](https://img.shields.io/github/v/release/posch-dev/smart-pixel-display?color=success)](https://github.com/posch-dev/smart-pixel-display/releases)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-Four panels cycle on the display based on time, whether music is playing, and what's coming up on the calendar. You can also switch between them manually through the web UI or the REST API.
+An intelligent display controller for a 128x32 iPixel Bluetooth Display.
+
+Four panels take turns on the display, picked Automatically; By time of day, whether music is
+playing, and what is on your calendar. You can also switch to panels manually.
 
 ![Preview](.github/assets/preview.gif)
 
-What it does:
-- Shows Time as a digital 24h Clock
-- Occasionally displays todays Bible Verse throughout the day.
-- Displays Albumcover, Trackinfo and a Beatvisualizer from your currently listened to song when playing music on streaming services (i.e Apple Music, Spotify, YouTube Music)
-- Shows you current weather information as well as dynamic personalized calender event information with optional departure time
+## Features
+
+**Four panels**
+
+| |                                                                               |
+|---|-------------------------------------------------------------------------------|
+| **Clock** | 24h digital clock                                                             |
+| **Now Playing** | cover art, track info and a beat visualizer for whatever you are listening to |
+| **Verse of the Day** | A daily bible verse, a few times a day                                        |
+| **Dashboard** | Live weather and calendar events with a departure countdown                   |
+
+- Intelligent cycling for panels
+
+Switch panels by hand whenever you want, from the web app or your phone
+
+**Other features**
+
+- **Web application:** Control the display, watch it live and change settings
+- **The Twin:** a looksmaxxed live preview of the display in your browser
+- **Twin Viewer & Editor:**
+  - **Full Screen Viewer:** View "The Twin" in Full Screen
+  - **Editor:** Customize everything about the pretty live preview of your Display (a.k.a "The Twin")
+  - **Export**: Download the preview as a Photo or animation. perfect for Social media AYO diese zeile verfeinern bitte
+- **Ready made iPhone shortcuts:** push your calendar to the Dashboard automatically
+- **Webhooks** Fire Webhooks automatically based on events on the Display, perfect for smart application like WLED Ayo hier verfeinern und Wled hyperlink bitte
+- REST API for everything else
 
 ## Hardware
 
-- Display: 128x32 RGB LED matrix with BLE + pypixelcolor support (e.g. iPixel)
-- Controller: any device with Python 3 and Bluetooth (Raspberry Pi, laptop, etc.)
+| Item | Required features | Example                                                                                                                                         |
+|---|---|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| Display | 128x32 RGB LED matrix, BLE, [pypixelcolor](https://pypi.org/project/pypixelcolor/) protocol | <img src=".github/assets/hardware-display.png" width="180"><br>[iPixel 128x32 LED Matrix](https://de.aliexpress.com/item/1005009054780561.html) |
+| Controller | Python 3, Bluetooth | <img src=".github/assets/hardware-pi.png" width="180"><br>[Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/)  |
 
-→ [Jump to Setup](#setup)
+Anything that runs Python and has Bluetooth works as the controller, a laptop or an old
+mini PC works too.
 
-BLE communication uses [pypixelcolor](https://pypi.org/project/pypixelcolor/).
+##### --> [Jump to Setup](#setup)
 
 ## Panels
 
-Each panel has a priority in `config.toml`. Higher number wins. Clock is always on as the fallback at priority 1.
+The Automatic scheduler switches the panel on its own,
+but you can always switch through panels manually.
 
-The scheduler handles switching automatically. Now Playing triggers when it detects a track scrobbling, Dashboard triggers when a calendar event is active, Verse of Day fires on a probability roll during its configured time windows. Manually triggering a panel from the web UI or API overrides the auto-scheduler until you hit "reset to auto". Outside `active_hours`, the display goes dark.
+| Panel | What it shows                                                              | |
+|---|----------------------------------------------------------------------------|---|
+| [Clock](panels/clock/README.md) | 24h digital clock                                                          | ![](.github/assets/clock.gif) |
+| [Verse of Day](panels/verse_of_day/README.md) | daily bible verse                                                          | ![](.github/assets/verse_preview.gif) |
+| [Now Playing](panels/now_playing/README.md)\* | Your currently played song with cover art, BPM Visualizer and progress bar | ![](.github/assets/nowplaying_preview.gif) |
+| [Dashboard](panels/dashboard/README.md) | live weather and calendar events with travel countdowns                    | ![](.github/assets/dashboard_preview.gif) |
 
-| Panel | What it shows |
-|---|---|
-| [Clock](panels/clock/README.md) | ![](.github/assets/clock.gif) <br> 24h digital clock with blinking colon |
-| [Verse of Day](panels/verse_of_day/README.md)* | ![](.github/assets/verse_preview.gif) <br> Daily Bible verse from YouVersion |
-| [Now Playing](panels/now_playing/README.md)* | ![](.github/assets/nowplaying_preview.gif) <br> Last.fm/Libre.fm track with cover art, BPM visualizer, progress bar |
-| [Dashboard](panels/dashboard/README.md) | ![](.github/assets/dashboard_preview.gif) <br> Live weather and calendar events with travel countdowns |
+\*Now Playing needs free API keys. See how to get them [here](panels/now_playing/README.md).
 
-\*Requires free API keys. Check the panel's `.md` file for which keys you need and how to get them.
+## Web Application
+
+The web app is available on port 12832, so it is reachable from any phone or laptop
+in the network at `http://<device-ip>:12832`.
+
+| Desktop                                                        | Mobile                                                        |
+|----------------------------------------------------------------|---------------------------------------------------------------|
+| <img src=".github/assets/WebUI-home-desktop.png" height="500"> | <img src=".github/assets/WebUI-home-mobile.png" height="500"> |
+
+It serves as the remote control of the display:
+- power on/off
+- brightness
+- switch panels
+- live preview (with Viewer & Editor)
+- Settings
+
+When an Update is available, the web app notifies and offers to install it.
+
+## The Twin
+
+The Twin is the looksmaxxed browser preview for the display.
+It sits on the Home tab of the Web App and follows whatever the real Display displays.
+
+
+"The Twin" has two color modes:
+
+| Color Mode: Web                                                     | Color Mode: Pixel                                                                                                  |
+|---------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| <img src=".github/assets/WebUI-home-twin-web.png" height="200"><br>sleek and modern visualization of your display | <img src=".github/assets/WebUI-home-twin-pixel.png" height="200"><br>HD Version of your Display in accurate colors |
+
+Color Modes are switchable per panel or globally
+
+
+You can also View it in big on the Home Screen of the Web App 
+(like the examples you see above).
+From there you can even export a Screenshot or an Animation  
+or step over into the [Twin Viewer & Editor](#twin-viewer--editor)
+that offers more customization and export settings.
+
+If you do not want "The Twin" on the Home tab,
+you can disable it in the Settings tab of the Web Application.
+
+## Twin Viewer & Editor
+
+The Twin on a page of its own, made for a big screen like a second monitor.
+
+<img src=".github/assets/WebUI-editor-clock-custom.png" height="300">
+
+You get there by enlarging the Twin on the Home tab,
+from *Settings -> Web*, or straight at `/preview`.
+
+- **Fullscreen**: nothing but the panel, as big as the screen allows
+- **Preview**: follow the live display or choose a specific panel
+- **Full customization**: Customize the Color or Hide any element on a Panel.
+- **Export:** Save Screenshots or Animations of "The Twin" in various formats in up to 4K Resolution. Perfect for social media!
+
+**Export Example:**
+
+<img src=".github/assets/Export-Twin-Editor-CharliXCX-Camera.svg" width="570">
+
+Supported Export Formats:
+- PNG
+- SVG
+- MP4
+- GIF
+- WebM
+- Animated SVG
 
 ## Setup
 
-**Prerequisites:** Python 3.11+, python3-venv, Bluetooth
+**Prerequisites:** Python 3.11+, Bluetooth. On Linux also `python3-venv`.
 
 ### 1. Clone and install
 
 ```bash
+
+# Linux
 git clone https://github.com/posch-dev/smart-pixel-display.git
 cd smart-pixel-display
 ./install.sh
+
+# ==== OR ===== #
+
+# Windows
+git clone https://github.com/posch-dev/smart-pixel-display.git
+cd smart-pixel-display
+powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-The install script creates a `.venv` in the repo, installs all dependencies, and sets up a systemd service (`smartpixeldisplay`).
+The installer builds the `.venv`, installs the dependencies and then walks you through it:
 
-If you prefer doing it manually:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+1. **Display**: Scans BLE Devices and lists what it finds.
+2. **Panels**: asks which panels to turn on
+3. **Autostart**: a systemd unit on Linux, a scheduled task on Windows. Say no and it
+   prints the start command instead.
 
-### 2. Configure your device
+Then it starts the service and prints the URL of the Web App.
 
-Add your panel's MAC address to `config.toml`:
+An existing `config.toml` or `.env` is never overwritten. Run the installer again to fill
+in what is missing, or `--reconfigure` to answer everything anew.
 
-```toml
-[device]
-mac_address = "XX:XX:XX:XX:XX:XX"
-```
+| Flag | What it does |
+|---|---|
+| `--yes`, `-y` | take every default, ask nothing |
+| `--reconfigure` | ask again even though the config is already there |
+| `--autostart` / `--no-autostart` | decide autostart without being asked |
+| `--update` | pull the latest release and restart |
+| `--check-update` | check for updates |
+| `--fresh` | update the `.venv` |
+| `--help` | this list |
 
-To find the address, pair the device via Bluetooth and run `bluetoothctl devices`.
+### 2. API keys
 
-#### 2.1 Add API keys (optional)
-
-Create a `.env` file in the project root:
+Only the "Now Playing" Panel needs API keys, the other three panels run without any.
+**All keys are free.** The installer asks for them,
+and you can always put them into `.env` yourself:
 
 ```env
-# Required for Verse of Day
-YOUVERSION=your_youversion_app_key
-
-# Required for Now Playing (pick one scrobbler)
+# Last.fm
 LASTFM_API_KEY=your_lastfm_key
 LASTFM_SECRET=your_lastfm_secret
 LASTFM_USERNAME=your_lastfm_username
 
-# Or use Libre.fm instead (no API key needed, just credentials)
+# ==== AND/OR ===== #
+
+# Libre.fm
 LIBREFM_USERNAME=your_librefm_username
 LIBREFM_PASSWORD=your_librefm_password
+```
 
+For accurate BPM visualization on the BPM Visualizer add:
+```env
+# (Optional, but recommended)
 GETSONGBPM_API_KEY=your_getsongbpm_key
 ```
 
-Clock and Dashboard work out of the box, no keys needed. Now Playing supports [Last.fm or Libre.fm](panels/now_playing/README.md) as scrobbler. All keys are free. Check the [Now Playing](panels/now_playing/README.md) and [Verse of Day](panels/verse_of_day/README.md) pages for step-by-step instructions on how to get and set them up.
 
-### 3. Start
+### 3. Running
 
-```bash
-source .venv/bin/activate
-python startup.py
-```
-
-The web UI will be at `http://<device-ip>:12832`.
-
-You can also run each panel standalone:
-```bash
-python panels/<panel>/main.py
-```
-
-#### 3.1 Running on boot (optional)
-
-If you ran `./install.sh`, the systemd service is already set up:
+With autostart on Linux:
 
 ```bash
 sudo systemctl start smartpixeldisplay      # Start
@@ -116,73 +214,83 @@ sudo systemctl stop smartpixeldisplay       # Stop
 journalctl -u smartpixeldisplay -f          # Live logs
 ```
 
-## Configuration
+By hand:
 
-Everything lives in `config.toml`. The web UI and API write changes back to disk immediately. Key settings:
-
-```toml
-[device]
-active_hours    = [6, 22]      # display off outside these hours
-flip_vertical   = true         # for panels mounted upside-down
-flip_horizontal = true
-start_powered_off = false      # start black until powered on, needs active_hours unset
-
-[clock]
-brightness = 80
-color      = [0, 255, 0]
-
-[verse_of_day]
-enabled     = true
-probability = 0.30             # chance to auto-trigger per scheduler tick
-
-[nowplaying]
-brightness = 80
-scrobbler  = "lastfm"          # "lastfm" or "librefm"
-
-[dashboard]
-[dashboard.weather]
-lat      = 40.7580
-lon      = -73.9855
-units    = "metric"            # "metric" or "imperial"
+```bash
+./.venv/bin/python startup.py
 ```
 
-Each panel supports webhooks* that fire HTTP requests on `on_enter` and `on_exit`. Device-level webhooks fire on power on/off and active hours start/end.
+You can also run a single panel standalone:
 
-\*Now Playing also supports `on_song_change`, which fires when a new song is displayed. It has template variables for accent colors (`{{accent1_hex}}`, `{{accent1_rgb}}`, `{{accent1_full_r}}`, etc.), track info (`{{title}}`, `{{artist}}`, `{{album}}`), and full-brightness color variants for external devices like WLED.
+```bash
+python panels/<panel>/main.py
+```
 
-## Web UI and API
+### 4. Updating
 
-The web UI at port 12832 lets you switch panels, adjust brightness, configure webhooks, and change settings. The REST API:
+The service checks GitHub for a new release once a day, and the web app shows a notice
+when there is one. To install it:
+
+```bash
+./install.sh --check-update  # check for updates
+./install.sh --update        # install update
+```
+
+## Configuration
+
+Everything is reachable from the web application, that is the comfortable way to change settings. The
+changes from the Web Application or the API land on disk immediately in `config.toml`.
+
+>A handful of settings live in `[expert]` and only change by editing the file. Those are dev
+>and expert settings, you do not need them for normal use.
+
+Each panel supports webhooks that fire HTTP requests on `on_enter` and `on_exit`.
+Device level webhooks fire on power on/off and active hours start/end.
+
+Now Playing also supports `on_song_change`, which fires when a new song is displayed.
+It has template variables for colors and track info
+ 
+| Accent Colors        | Track Infos  |
+|----------------------|--------------|
+| `{{accent1_hex}}`    | `{{title}}`  |
+| `{{accent1_rgb}}`    | `{{artist}}` |
+| `{{accent1_full_r}}`  | `{{album}}`  |
+| full brightness color variants for external devices like WLED. | etc.         |
+| etc.     |              |
+
+
+## REST API
 
 ```
 GET    /status                 - active mode, connected state, clearing status
 POST   /display/power          - turn display on/off: {"on": true/false}
 GET    /mode                   - current mode, triggers, display state
-POST   /mode/trigger/{name}   - trigger a mode: clock | verse_of_day | nowplaying | dashboard
-DELETE /mode/{name}           - untrigger a mode (returns to scheduler)
-POST   /mode/reset            - clear all manual triggers, hand back to auto-scheduler
-POST   /calendar              - push a calendar event to the dashboard
-GET    /calendar              - list all calendar events
-DELETE /calendar              - clear all calendar events
-POST   /dashboard/trigger     - manually trigger dashboard
-GET    /dashboard/status      - current dashboard data (weather + calendar)
-GET    /config                - full config dump
+POST   /mode/trigger/{name}    - trigger a panel: clock | verse_of_day | nowplaying | dashboard
+DELETE /mode/{name}            - untrigger a panel (returns to scheduler)
+POST   /mode/reset             - clear all manual triggers, hand back to auto-scheduler
+POST   /calendar               - push a calendar event to the dashboard
+GET    /calendar               - list all calendar events
+DELETE /calendar               - clear all calendar events
+POST   /dashboard/trigger      - manually trigger dashboard
+GET    /dashboard/status       - current dashboard data (weather + calendar)
+GET    /config                 - full config dump
 POST   /config/{section}/{key} - update a config value: {"value": ...}
 ```
 
-## Shortcuts
+### Smartphone Shortcuts
 
-Ready made iPhone shortcuts that talk to this API live in [posch-dev/apple-shortcuts](https://github.com/posch-dev/apple-shortcuts):
+Ready made iPhone shortcuts that talk to this API live in
+[posch-dev/apple-shortcuts](https://github.com/posch-dev/apple-shortcuts):
 
-| Shortcut | What it does |
-|---|---|
-| [Calendar to Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/calendar-to-dashboard) | Pushes today's events to `POST /calendar`, driving time included |
-| [Morning Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/morning-dashboard) | Runs the above from your alarm, only when you are at home |
+| Icon                                                                                                                                                              | Shortcut                                                                                                        | What it does |
+|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|---|
+| <img src="https://raw.githubusercontent.com/posch-dev/apple-shortcuts/main/shortcuts/calendar-to-dashboard/icon.png" alt="Calendar to Dashboard icon" width="40"> | [Calendar to Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/calendar-to-dashboard) | Pushes today's events to `POST /calendar`, driving time included |
+| <img src="https://raw.githubusercontent.com/posch-dev/apple-shortcuts/main/shortcuts/morning-dashboard/icon.png" alt="Calendar to Dashboard icon" width="40">     | [Morning Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/morning-dashboard)         | Runs the above from your alarm, only when you are at home                                                       |
 
 ## License
 
-GPL-3.0 - any software that uses or distributes this code must also be released under the same license.
+GPL-3.0, see [here](./LICENSE).
 
-Icons come from two sets: [pixelarticons](https://github.com/halfmage/pixelarticons) under MIT,
-and Streamline Pixel by [Streamline](https://streamlinehq.com) under
+Icons come from two sets: [pixelarticons](https://github.com/halfmage/pixelarticons) under
+MIT, and Streamline Pixel by [Streamline](https://streamlinehq.com) under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
