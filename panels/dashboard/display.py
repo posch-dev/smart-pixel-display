@@ -361,6 +361,19 @@ def _today_event_info(now: datetime):
         return False, None, None, None, None, None
 
 
+def layout_state(now: datetime | None = None) -> dict:
+    now = now or datetime.now(LOCAL_TZ)
+    has_events, leave_in, leave_time_s, title, start_s, end_s = _today_event_info(now)
+    mode = 1 if not has_events else (3 if leave_in is not None else 2)
+    return {"mode": mode, "title": title, "leave_in": leave_in,
+            "leave_time": leave_time_s, "start": start_s, "end": end_s,
+            "late": leave_in is not None and leave_in <= 0}
+
+
+def display_weather() -> dict | None:
+    return _to_display_weather(_weather) if _weather else None
+
+
 def _draw_leave_text(draw, leave_in, leave_time_s, x_center, y,
                      leave_blink_on: bool = True,
                      now_color=C_PURPLE) -> None:

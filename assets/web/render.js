@@ -80,7 +80,6 @@ function rPalette(mode) {
     np3: _rVar('--np3', '') || _rVar('--np1', '') || _rVar('--accent', '#87a878'),
     cl:  _rVar('--cl', '') || _rVar('--accent', '#87a878'),
     vs:  _rVar('--vs', '') || _rVar('--accent', '#87a878'),
-    ds:  _rVar('--ds', '') || _rVar('--accent', '#87a878'),
   };
 }
 
@@ -380,37 +379,48 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   return ops;
 }
 
-function _rDashboard(scene, t, pal) {
+// the dashboard is not laid out here. the tile is measured and the file is that
+// measurement blown up, so the two cannot drift apart however the css moves on
+function _rDashboard(scene, t, pal, animate, decl) {
+  const snap = scene.snap;
+  if (!snap || !snap.w) return [];
+  const k = R_W / snap.w;
+  const half = (scene.blink || 2) / 2;
+  const phase = Math.floor(t / half) % 2 === 0;
+  const blink = animate && decl && scene.blink && scene.late && scene.extra && scene.blinkNow;
   const ops = [];
-  const ico = 10 * CQ, gap = 4 * CQ;
-  const tempSize = 10 * CQ, condSize = 2.8 * CQ, evSize = 3 * CQ;
-
-  const nowW = Math.max(rTextWidth(scene.temp, tempSize, 700), rTextWidth(scene.cond, condSize));
-  const evW = Math.min(R_W * 0.44, 300);
-  const total = ico + gap + nowW + gap + 1 + gap + evW;
-  let x = (R_W - total) / 2;
-
-  const wi = icon(scene.icon, x, (R_H - ico) / 2, ico, ico, pal.ds);
-  if (wi) ops.push(wi);
-  x += ico + gap;
-
-  const condLine = condSize * 1.25;
-  const nowH = tempSize + 6 + condLine;
-  let ny = (R_H - nowH) / 2;
-  ops.push(text(x, rBase(ny, tempSize, tempSize, 700), scene.temp, tempSize, pal.text, {weight: 700}));
-  ops.push(text(x, rBase(ny + tempSize + 6, condLine, condSize), scene.cond, condSize, pal.muted));
-  x += nowW + gap;
-
-  ops.push(rect(x, (R_H - ico) / 2, 1, ico, pal.border));
-  x += 1 + gap;
-
-  const evLine = evSize * 1.25;
-  const evH = evLine + 6 + condLine;
-  const ey = (R_H - evH) / 2;
-  ops.push(clip(x, ey, evW, evLine, 0,
-    [text(0, rBase(0, evLine, evSize, 600), scene.event, evSize, pal.text, {weight: 600})]));
-  ops.push(text(x, rBase(ey + evLine + 6, condLine, condSize), scene.eventWhen, condSize, pal.muted));
+  for (const o of snap.ops) {
+    const x = o.x * k, y = o.y * k;
+    if (o.op === 'rect') { ops.push(rect(x, y, o.w * k, o.h * k, o.fill)); continue; }
+    if (o.op === 'image') {
+      ops.push({op: 'image', x, y, w: o.w * k, h: o.h * k, r: 0, href: o.src});
+      continue;
+    }
+    if (o.op === 'icon') {
+      const ic = icon(o.href, x, y, o.w * k, o.h * k, o.fill);
+      if (ic) ops.push(ic);
+      continue;
+    }
+    const opt = {weight: o.weight, family: o.family, width: o.width * k};
+    if (!o.now) { ops.push(text(x, y, o.text, o.size * k, o.fill, opt)); continue; }
+    const [lit, alt] = snap.now;
+    if (blink) {
+      const on = text(x, y, o.text, o.size * k, lit, opt);
+      const off = text(x, y, o.text, o.size * k, alt, opt);
+      on.anim = {type: 'blink', dur: scene.blink};
+      off.anim = {type: 'blink', dur: scene.blink, invert: true};
+      ops.push(on, off);
+    } else {
+      ops.push(text(x, y, o.text, o.size * k,
+                    scene.blinkNow && !phase ? alt : lit, opt));
+    }
+  }
   return ops;
+}
+
+function _rLeaveParts(scene) {
+  if (scene.late) return ['NOW!', String(Math.abs(scene.leaveIn))];
+  return [bpLeaveMinutes(scene.leaveIn), scene.leaveTime];
 }
 
 const R_PANELS = {clock: _rClock, verse_of_day: _rVerse,
@@ -479,8 +489,9 @@ function _opToSvg(o, defs) {
     }
     if (o.anim && o.anim.type === 'blink') {
       const plain = Object.assign({}, o, {anim: null});
+      const values = o.anim.invert ? '0;1' : '1;0';
       return `<g>${_opToSvg(plain, defs)}<animate attributeName="opacity" calcMode="discrete"`
-           + ` values="1;0" keyTimes="0;0.5" dur="${o.anim.dur}s" repeatCount="indefinite"/></g>`;
+           + ` values="${values}" keyTimes="0;0.5" dur="${o.anim.dur}s" repeatCount="indefinite"/></g>`;
     }
     // the width is pinned so a substitute font cannot break the layout
     return `<text x="${o.x}" y="${o.y}" font-family="${_esc(o.family)}" font-size="${o.size}"`

@@ -140,6 +140,25 @@ const BP_WEATHER_ICONS = {
   'snow': '#ico-snow', 'thunderstorm': '#ico-thunder', 'windy': '#ico-wind',
 };
 
+// the pixel look draws the very files the matrix draws, same mapping as _CONDITION_ICON
+const BP_WEATHER_PNG = {
+  'clear': 'sunny.png', 'partly cloudy': 'partially_cloudy.png', 'overcast': 'cloudy.png',
+  'fog': 'cloudy.png', 'drizzle': 'rainy.png', 'rain': 'rainy.png',
+  'snow': 'snowy.png', 'thunderstorm': 'lightning.png', 'windy': 'windy.png',
+};
+
+// what the panel puts on a temperature, warm tone first and the freezing one behind it
+const BP_TEMP_COLORS = {
+  temp: ['255,200,0', '100,190,255'], high: ['0,255,0', '40,80,220'],
+  low: ['220,50,50', '170,60,220'],
+};
+const BP_DASH_COLORS = {white: '180,180,180', red: '220,50,50', purple: '170,60,220',
+                        orange: '255,140,0', turquoise: '0,200,180'};
+// a pixel this dark in a panel icon is background, the palettes are not exactly black
+const BP_PNG_BLACK = 12;
+// how much wider than the temperature the clock runs, centred over it
+const BP_CLOCK_SCALE = 0.94;
+
 const BP_TEMPLATES = {
   clock: '<div class="bp-clock-wrap" id="bp-clock-wrap"><div class="bp-clock"><span id="bp-hh">--</span><span class="bp-colon" id="bp-colon">:</span><span id="bp-mm">--</span></div>' +
          '<div class="bp-sub bp-date" id="bp-date"></div></div>',
@@ -162,11 +181,23 @@ const BP_TEMPLATES = {
            '<div class="bp-times"><span id="bp-elapsed">0:00</span><span id="bp-total">0:00</span></div>' +
          '</div></div>',
   dashboard: '<div class="bp-dash" id="bp-dash">' +
-         '<svg class="ico bp-wico" id="bp-wico"><use href="#ico-cloud"/></svg>' +
-         '<div class="bp-dash-now"><div class="bp-temp" id="bp-temp">\u2014</div>' +
-         '<div class="bp-sub" id="bp-cond"></div></div>' +
-         '<div class="bp-dash-ev"><div class="bp-ev-title" id="bp-event">No upcoming events</div>' +
-         '<div class="bp-sub" id="bp-event-when"></div></div></div>',
+         '<div class="bp-ddate" id="bp-ddate"></div>' +
+         '<div class="bp-dash-left">' +
+           '<div class="bp-dclock" id="bp-dclock"><span id="bp-dhh">--</span>' +
+           '<span class="bp-colon" id="bp-dcolon">:</span><span id="bp-dmm">--</span></div>' +
+           '<svg class="ico bp-wico" id="bp-wico"><use href="#ico-cloud"/></svg>' +
+           '<img class="bp-wpng" id="bp-wpng" alt="">' +
+           '<div class="bp-temp" id="bp-temp">\u2014</div>' +
+           '<div class="bp-hilo"><span id="bp-high"></span><span id="bp-low"></span></div>' +
+         '</div>' +
+         '<div class="bp-dash-ev" id="bp-dash-ev">' +
+           '<div class="bp-leave" id="bp-leave"></div>' +
+           '<div class="bp-ev-row">' +
+             '<svg class="ico bp-evico" id="bp-evico"><use href="#ico-calendar"/></svg>' +
+             '<div class="bp-ev-title" id="bp-event"></div>' +
+           '</div>' +
+           '<div class="bp-sub bp-ev-when" id="bp-event-when"></div>' +
+         '</div></div>',
 };
 
 const BP_TRANSLATIONS = {
@@ -472,27 +503,314 @@ function _playheadLoop() {
 }
 requestAnimationFrame(_playheadLoop);
 
-function _bpDashboard(dash, colors) {
-  _tint('bp-dash', '--ds', colors && colors.dashboard);
+function bpDashScene(dash) {
   const w = (dash && dash.weather) || {};
-  _bpText('bp-temp', w.temp_now != null ? Math.round(w.temp_now) + '\u00b0' : '\u2014');
-  const parts = [];
-  if (w.condition) parts.push(w.condition);
-  if (w.temp_high != null) parts.push('H ' + Math.round(w.temp_high) + '\u00b0');
-  if (w.temp_low != null) parts.push('L ' + Math.round(w.temp_low) + '\u00b0');
-  _bpText('bp-cond', parts.join('  \u00b7  '));
-  const use = document.querySelector('#bp-wico use');
-  if (use) use.setAttribute('href', BP_WEATHER_ICONS[w.condition] || '#ico-cloud');
-  const ev = ((dash && dash.events) || [])[0];
-  _bpText('bp-event', (ev && ev.title) || 'No upcoming events');
-  _bpText('bp-event-when', ev ? _eventWhen(ev) : '');
+  const lay = (dash && dash.layout) || {mode: 1};
+  const freeze = (dash && dash.units) === 'imperial' ? 32 : 0;
+  const now = new Date();
+  const set = document.documentElement.dataset;
+  return {
+    // the drawer can pin the tile to the weather layout, and the export follows.
+    // rawMode is what the panel decided, the drawer builds its rows off that
+    mode: set.dOnlyWeather === 'on' ? 1 : (lay.mode || 1),
+    rawMode: lay.mode || 1,
+    extra: set.dExtra !== 'off',
+    when: set.dWhen !== 'off',
+    blinkNow: set.dBlink !== 'off',
+    noDate: set.dDate === 'off',
+    hh: String(now.getHours()).padStart(2, '0'),
+    mm: String(now.getMinutes()).padStart(2, '0'),
+    date: bpLongDate(now),
+    temp: w.temp_now != null ? Math.round(w.temp_now) : null,
+    high: w.temp_high != null ? Math.round(w.temp_high) : null,
+    low: w.temp_low != null ? Math.round(w.temp_low) : null,
+    cold: {temp: w.temp_now < freeze, high: w.temp_high < freeze, low: w.temp_low < freeze},
+    condition: w.condition || '',
+    icon: BP_WEATHER_ICONS[w.condition] || '#ico-cloud',
+    png: '/assets/weather/' + (BP_WEATHER_PNG[w.condition] || 'cloudy.png'),
+    title: lay.title || '',
+    when: lay.start ? (lay.end ? lay.start + ' \u2013 ' + lay.end : lay.start) : '',
+    leaveIn: lay.leave_in, leaveTime: lay.leave_time || '', late: !!lay.late,
+  };
 }
 
-function _eventWhen(ev) {
-  const d = new Date(ev.start_time);
-  if (isNaN(d)) return '';
-  return d.toLocaleString('en-GB',
-    {weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false});
+// the panel switches to tenths of an hour once the wait passes an hour
+function bpLeaveMinutes(leaveIn) {
+  return leaveIn > 60 ? (leaveIn / 60).toFixed(1) : String(leaveIn);
+}
+
+function bpLongDate(d) {
+  const day = d.getDate();
+  return `${d.toLocaleDateString('en-US', {weekday: 'long'})}, `
+       + `${d.toLocaleDateString('en-US', {month: 'long'})} ${day}`
+       + `<sup class="bp-ord">${_ordinalSuffix(day)}</sup> ${d.getFullYear()}`;
+}
+
+// the renderer has no markup, the suffix rides on the line
+function bpLongDateText(d) {
+  const day = d.getDate();
+  return `${d.toLocaleDateString('en-US', {weekday: 'long'})}, `
+       + `${d.toLocaleDateString('en-US', {month: 'long'})} ${day}${_ordinalSuffix(day)}`
+       + ` ${d.getFullYear()}`;
+}
+
+function bpLeaveHtml(sc) {
+  const car = '<svg class="ico bp-carico"><use href="#ico-car"/></svg>';
+  if (sc.late)
+    return `<span class="bp-now">NOW!</span><span class="bp-late">${Math.abs(sc.leaveIn)}</span>${car}`;
+  return `<span class="bp-mins">${bpLeaveMinutes(sc.leaveIn)}</span>`
+       + `<span class="bp-leave-at">${sc.leaveTime}</span>${car}`;
+}
+
+const _bpPngCache = new Map();
+
+// the panel icons are drawn on black and carry no alpha, so black becomes the hole
+function bpWeatherPng(url) {
+  if (_bpPngCache.has(url)) return _bpPngCache.get(url);
+  const job = new Promise(done => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0);
+      const px = g.getImageData(0, 0, c.width, c.height);
+      // the palettes hold near black as well, up to about (0,3,7), and those pixels
+      // are background too
+      for (let i = 0; i < px.data.length; i += 4)
+        if (px.data[i] + px.data[i + 1] + px.data[i + 2] <= BP_PNG_BLACK) px.data[i + 3] = 0;
+      g.putImageData(px, 0, 0);
+      done(c.toDataURL('image/png'));
+    };
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+  _bpPngCache.set(url, job);
+  return job;
+}
+
+function _bpPaintWeatherPng(url) {
+  const el = document.getElementById('bp-wpng');
+  if (!el || el.dataset.src === url) return;
+  el.dataset.src = url;
+  bpWeatherPng(url).then(data => {
+    if (data && el.dataset.src === url) el.setAttribute('src', data);
+  });
+}
+
+function _bpDashboard(dash, colors) {
+  _tint('bp-dash', '--ds', colors && colors.dashboard);
+  // the clock reads in the colour the clock panel runs in, not the dashboard's own
+  _tint('bp-dash', '--p-clock', colors && colors.clock);
+  const root = document.getElementById('bp-dash');
+  if (!root) return;
+  const sc = bpDashScene(dash);
+  root.dataset.dmode = sc.mode;
+  _bpDashLast = sc;
+  _bpDashColors(root, sc);
+  _bpText('bp-dhh', sc.hh);
+  _bpText('bp-dmm', sc.mm);
+  _bpHtml('bp-ddate', sc.date);
+  _bpHtml('bp-temp', (sc.temp != null ? sc.temp : '\u2014') + '<sup class="bp-deg">\u00b0</sup>');
+  _bpText('bp-high', sc.high != null ? String(sc.high) : '');
+  _bpText('bp-low', sc.low != null ? String(sc.low) : '');
+  const use = document.querySelector('#bp-wico use');
+  if (use) use.setAttribute('href', sc.icon);
+  _bpPaintWeatherPng(sc.png);
+  _bpText('bp-event', sc.title);
+  _bpText('bp-event-when', sc.mode === 2 ? sc.when : '');
+  _bpHtml('bp-leave', sc.mode === 3 ? bpLeaveHtml(sc) : '');
+  _bpQueueFit(`${sc.hh}:${sc.mm}|${sc.temp}`,
+              `${sc.leaveIn}|${sc.leaveTime}|${sc.title}`, sc.mode);
+  _bpWatchDash();
+}
+
+// a template that was written this tick is not laid out yet, and measuring it there
+// is what made a panel switch come out at a different size than a reload
+function _bpQueueFit(clockKey, leaveKey, mode) {
+  requestAnimationFrame(() => {
+    _bpFitDashClock(clockKey);
+    if (mode === 3) _bpFitLeave(leaveKey);
+  });
+}
+
+function _bpDashColors(root, sc) {
+  const pixel = _activePreview === 'pixel';
+  const set = (name, rgb) => pixel ? root.style.setProperty(name, `rgb(${rgb})`)
+                                   : root.style.removeProperty(name);
+  set('--p-temp', BP_TEMP_COLORS.temp[sc.cold.temp ? 1 : 0]);
+  set('--p-high', BP_TEMP_COLORS.high[sc.cold.high ? 1 : 0]);
+  set('--p-low', BP_TEMP_COLORS.low[sc.cold.low ? 1 : 0]);
+  set('--p-title', BP_DASH_COLORS.white);
+  set('--p-when', BP_DASH_COLORS.turquoise);
+  set('--p-mins', BP_DASH_COLORS.purple);
+  set('--p-at', BP_DASH_COLORS.red);
+  // the web look falls through to the accent and the tone the manual pill already uses
+  set('--p-now', BP_DASH_COLORS.purple);
+  set('--p-now-alt', BP_DASH_COLORS.orange);
+}
+
+const _bpMeasure = document.createElement('canvas').getContext('2d');
+
+function _bpFontBox(cs) {
+  _bpMeasure.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const m = _bpMeasure.measureText('Hg');
+  const size = parseFloat(cs.fontSize);
+  const asc = m.fontBoundingBoxAscent || size * 0.8;
+  const desc = m.fontBoundingBoxDescent || size * 0.2;
+  return {asc, desc, h: asc + desc};
+}
+
+function _bpVisible(color) {
+  const m = String(color).match(/rgba?\(([^)]+)\)/);
+  return !m || (m[1].split(',')[3] || '1').trim() !== '0';
+}
+
+// NOW carries the only movement on this panel and its colour is animated, so the two
+// phases have to be read off the variables rather than off the glyph
+function _bpNowColors(root) {
+  const cs = getComputedStyle(root);
+  const pick = (...names) => {
+    for (const n of names) {
+      const v = cs.getPropertyValue(n).trim();
+      if (v) return v;
+    }
+    return '';
+  };
+  return [pick('--d-now', '--p-now', '--accent'),
+          pick('--d-now-alt', '--p-now-alt', '--accent-c', '--accent')];
+}
+
+// what the tile actually put on screen, in tile pixels. the file is then a copy of the
+// tile rather than a second description of the same layout drifting away from it
+function bpDashSnapshot() {
+  const box = document.getElementById('home-blueprint');
+  const root = document.getElementById('bp-dash');
+  if (!box || !root || !box.clientWidth) return null;
+  const b = box.getBoundingClientRect();
+  const ops = [];
+  _bpSnapNode(root, ops, b);
+  return {w: b.width, h: b.height, ops, now: _bpNowColors(root)};
+}
+
+function _bpSnapNode(el, ops, b) {
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden') return;
+  const r = el.getBoundingClientRect();
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'svg') {
+    const use = el.querySelector('use');
+    if (use && r.width)
+      ops.push({op: 'icon', href: use.getAttribute('href'), fill: cs.color,
+                x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height});
+    return;
+  }
+  if (tag === 'img') {
+    if (r.width && el.getAttribute('src'))
+      ops.push({op: 'image', src: el.getAttribute('src'),
+                x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height});
+    return;
+  }
+  const bw = parseFloat(cs.borderLeftWidth) || 0;
+  if (bw > 0 && cs.borderLeftStyle !== 'none' && _bpVisible(cs.borderLeftColor))
+    ops.push({op: 'rect', fill: cs.borderLeftColor,
+              x: r.left - b.left, y: r.top - b.top, w: bw, h: r.height});
+  const inline = cs.display.startsWith('inline');
+  const fb = _bpFontBox(cs);
+  for (const node of el.childNodes) {
+    if (node.nodeType === 1) { _bpSnapNode(node, ops, b); continue; }
+    if (node.nodeType !== 3 || !node.nodeValue.trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const tr = range.getBoundingClientRect();
+    if (!tr.width) continue;
+    // an inline box is as tall as its font, a block box as tall as its line
+    const base = inline ? r.top + fb.asc : tr.top + (tr.height - fb.h) / 2 + fb.asc;
+    ops.push({op: 'text', text: node.nodeValue, fill: cs.color, size: parseFloat(cs.fontSize),
+              weight: cs.fontWeight, family: cs.fontFamily, width: tr.width,
+              x: tr.left - b.left, y: base - b.top,
+              now: el.classList.contains('bp-now')});
+  }
+}
+
+function _bpSpaceWidth(el) {
+  const cs = getComputedStyle(el);
+  _bpMeasure.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  return _bpMeasure.measureText(' ').width;
+}
+
+// the clock spans exactly what the temperature spans, the way the panel lines them up
+let _bpDashRO = null;
+let _bpDashLast = null;
+
+// the drawer builds its rows off the layout that is on the tile right now
+function bpDashNow() {
+  return _bpDashLast || {mode: 1, late: false};
+}
+
+// a measured size is only as good as the layout it was measured in, so it is taken
+// again whenever the tile changes size or the seven segment font finally lands
+function _bpRefitDash() {
+  const key = 'refit' + performance.now();
+  _bpFitDashClock(key);
+  if (document.getElementById('bp-leave')?.firstChild) _bpFitLeave(key);
+}
+
+function _bpWatchDash() {
+  const box = document.getElementById('home-blueprint');
+  if (!box || _bpDashRO) return;
+  _bpDashRO = new ResizeObserver(() => _bpRefitDash());
+  _bpDashRO.observe(box);
+  document.fonts?.ready.then(_bpRefitDash);
+}
+
+// one cqw in pixels, so a measured size can be written back in the unit the tile
+// is built in and survives a resize
+function _bpUnit(el) {
+  const box = el.closest('.blueprint');
+  return box ? box.getBoundingClientRect().width / 100 : 0;
+}
+
+function _bpFitDashClock(key) {
+  const clk = document.getElementById('bp-dclock');
+  const temp = document.getElementById('bp-temp');
+  if (!clk || !temp || clk.dataset.fit === key) return;
+  clk.dataset.fit = key;
+  clk.style.fontSize = '';
+  const base = parseFloat(getComputedStyle(clk).fontSize);
+  // the last glyph still carries its letter spacing, that trailing gap is not ink
+  const own = clk.getBoundingClientRect().width - base * 0.05;
+  const want = temp.getBoundingClientRect().width * BP_CLOCK_SCALE;
+  const unit = _bpUnit(clk);
+  if (own > 0 && want > 0 && unit > 0)
+    clk.style.fontSize = (base * want / own / unit).toFixed(3) + 'cqw';
+}
+
+// minutes, time and car span what the calendar row spans, both gaps equal and never
+// tighter than the space that sits between the minutes and the time
+function _bpFitLeave(key) {
+  const leave = document.getElementById('bp-leave');
+  const row = document.querySelector('#bp-dash-ev .bp-ev-row');
+  if (!leave || !row || !leave.firstChild || leave.dataset.fit === key) return;
+  leave.dataset.fit = key;
+  leave.style.setProperty('--leave-gap', '0px');
+  const own = leave.getBoundingClientRect().width;
+  const want = row.getBoundingClientRect().width;
+  const min = _bpSpaceWidth(leave);
+  const unit = _bpUnit(leave);
+  if (unit > 0)
+    leave.style.setProperty('--leave-gap',
+      (Math.max(min, (want - own) / 2) / unit).toFixed(3) + 'cqw');
+}
+
+// the source string is what gets compared, not the serialised markup: the browser
+// writes <use> with a closing tag, so reading it back never matches and the write
+// would repeat every poll, restarting every animation under it
+function _bpHtml(id, html) {
+  const el = document.getElementById(id);
+  if (!el || el.dataset.html === html) return;
+  el.dataset.html = html;
+  el.innerHTML = html;
 }
 
 function _bpText(id, text) {

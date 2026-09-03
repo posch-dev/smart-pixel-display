@@ -228,7 +228,7 @@ header {
 }
 .card-link:hover { background: color-mix(in srgb, var(--accent) 20%, var(--card)); }
 .card-link b, .bp-full-twin b { font-weight: 700; }
-.card-link .ico { width: 16px; height: 16px; flex-shrink: 0; }
+.card-link .ico { width: 24px; height: 24px; flex-shrink: 0; }
 
 /* the per panel rows fold out of the colours row, the way the brightness slider does */
 .row-more {
@@ -517,7 +517,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   color: #fff; cursor: pointer;
 }
 .bp-full-tool:hover { border-color: #fff; background: rgba(0,0,0,.9); }
-.bp-full-tool .ico { width: 16px; height: 16px; flex-shrink: 0; }
+.bp-full-tool .ico { width: 24px; height: 24px; flex-shrink: 0; }
 /* the one tool that leaves the page says so, and wears the accent to prove it */
 .bp-full-twin {
   width: auto; padding: 0 12px; gap: 8px; text-decoration: none;
@@ -585,7 +585,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   box-shadow: inset 0 0 16px -7px var(--card);
 }
 [data-theme="light"] #pv-export:hover { background: color-mix(in srgb, var(--green) 36%, transparent); }
-.pv-act .ico { width: 15px; height: 15px; }
+.pv-act .ico { width: 24px; height: 24px; }
 
 #pv-menu {
   /* it stands before the stage in the markup, the drawer belongs behind it */
@@ -600,6 +600,8 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   right: calc(14px + env(safe-area-inset-right) + var(--pv-side));
 }
 #pv-menu .row:last-child { border-bottom: none; }
+/* a fold ends a group, the row above its edge keeps its line */
+#pv-menu .pv-fold-in .row:last-child { border-bottom: 1px solid var(--border); }
 .modal-title .ico { flex-shrink: 0; color: var(--text); }
 .ex-head { min-width: 0; }
 .ex-panel { font-weight: 700; }
@@ -712,11 +714,110 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 #bp-elapsed { color: var(--np2, var(--accent)); }
 #bp-total { color: var(--np-total, var(--muted)); }
 
-.bp-dash { display: flex; align-items: center; justify-content: center; gap: 4cqw; text-align: left; }
-.bp-wico { width: 10cqw; height: 10cqw; color: var(--ds, var(--accent)); flex-shrink: 0; }
-.bp-dash-ev { border-left: 1px solid var(--border); padding-left: 4cqw; min-width: 0; max-width: 44%; }
-.bp-ev-title { font-size: 3cqw; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bp-temp { font-size: 10cqw; font-weight: 700; line-height: 1; }
+/* the dashboard is the matrix in two rows: clock over the big temperature on the left,
+   the weather icon over the high low column on the right of them. the date is the twin's
+   own and hangs above everything, out of the flow, so it cannot push the block around */
+/* the block rides below the middle, further down when the weather stands alone */
+.bp-dash {
+  display: flex; align-items: center; justify-content: center;
+  gap: 4cqw; width: 100%; margin-top: 4.5cqw;
+}
+.bp-dash[data-dmode="2"], .bp-dash[data-dmode="3"] { margin-top: 6cqw; }
+.bp-ddate {
+  position: absolute; top: 2.4cqw; left: 0; right: 0; z-index: 3;
+  font-size: 3.2cqw; line-height: 1.25; text-align: center;
+  color: var(--d-date, var(--muted));
+}
+.bp-dash-left {
+  position: relative; display: grid; grid-template-columns: auto auto;
+  column-gap: 1.6cqw; align-items: end; text-align: left;
+}
+/* out of the flow inside its own cell, so a clock wider than the number can neither
+   push the icon column over nor lose the box that has to be measured */
+.bp-dclock {
+  grid-area: 1 / 1 / 2 / 2; position: absolute; width: max-content;
+  left: 50%; top: 50%; transform: translate(-50%, calc(-50% - .6cqw));
+  display: flex; align-items: baseline; white-space: nowrap;
+  font-family: 'SevenSegment', ui-monospace, monospace;
+  font-size: 4cqw; line-height: 1; color: var(--d-clock, var(--p-clock, var(--accent))); letter-spacing: .05em;
+}
+/* the slot is two digits wide and stays that way, so neither a single digit reading nor
+   a minus sign can pull the clock, the icon and the high low column along with it. a
+   minus is simply painted in front and never counted */
+.bp-temp {
+  grid-area: 2 / 1; font-size: 9cqw; font-weight: 700; line-height: 1;
+  color: var(--d-temp, var(--p-temp, var(--text)));
+  width: calc(2ch + .55em); text-align: center; font-variant-numeric: tabular-nums;
+}
+.bp-deg { font-size: .55em; line-height: 0; vertical-align: super; }
+.bp-wico, .bp-wpng { grid-area: 1 / 2; width: 6cqw; height: 6cqw; justify-self: center; }
+.bp-wico { color: var(--d-icon, var(--ds, var(--text))); }
+.bp-wpng { image-rendering: pixelated; display: none; }
+.blueprint[data-preview="pixel"] .bp-wpng { display: block; }
+.blueprint[data-preview="pixel"] .bp-wico { display: none; }
+.bp-hilo {
+  grid-area: 2 / 2; justify-self: center; display: flex; flex-direction: column;
+  font-size: 3.2cqw; line-height: 1.15; text-align: center; margin-bottom: .5cqw;
+  width: 2ch; font-variant-numeric: tabular-nums;
+}
+.bp-hilo span:first-child { color: var(--d-high, var(--p-high, var(--accent))); }
+.bp-hilo span:last-child { color: var(--d-low, var(--p-low, var(--accent-c))); }
+
+.bp-dash-ev {
+  border-left: .35cqw solid var(--d-div, var(--border)); padding-left: 4cqw;
+  min-width: 0; max-width: 44%; text-align: left;
+}
+.bp-dash[data-dmode="1"] .bp-dash-ev { display: none; }
+.bp-ev-row { display: flex; align-items: center; gap: 1.6cqw; min-width: 0; }
+.bp-evico { width: 3.4cqw; height: 3.4cqw; color: var(--d-cal, var(--ds, var(--accent))); flex-shrink: 0; }
+.bp-ev-title {
+  font-size: 3cqw; font-weight: 600; color: var(--d-title, var(--p-title, var(--text)));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bp-ev-when { color: var(--d-when, var(--p-when, var(--muted))); }
+/* the car closes the line, its bottom pixel on the baseline of the time */
+.bp-leave {
+  display: flex; align-items: baseline; gap: var(--leave-gap, 1.2cqw);
+  font-size: 3.2cqw; line-height: 1.3; margin-bottom: .6cqw; white-space: nowrap;
+}
+.bp-dash[data-dmode="2"] .bp-leave { display: none; }
+.bp-carico { width: 5.4cqw; height: 1.8cqw; color: var(--d-car, var(--p-at, var(--accent))); flex-shrink: 0; }
+.bp-mins { color: var(--d-mins, var(--p-mins, var(--text))); }
+.bp-leave-at { color: var(--d-at, var(--p-at, var(--muted))); }
+.bp-late { color: var(--d-late, var(--p-at, var(--muted))); }
+/* a group that closes rather than disappearing, so the drawer does not jump under the
+   finger that switched it. the inner box is what actually clips */
+.pv-fold {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .22s ease;
+}
+.pv-fold[data-open="1"] { grid-template-rows: 1fr; }
+.pv-fold-in { overflow: hidden; min-height: 0; }
+
+/* what the drawer can take off the tile. only weather is not here, the scene hands the
+   block mode 1 and the layout rules do the rest */
+[data-d-date="off"] .bp-ddate { display: none; }
+[data-d-date="off"] .bp-dash[data-dmode] { margin-top: 0; }
+[data-d-div="off"] .bp-dash-ev { border-left-color: transparent; }
+[data-d-extra="off"] .bp-leave { display: none; }
+[data-d-when="off"] .bp-ev-when { display: none; }
+[data-d-blink="off"] .bp-now { animation: none; }
+/* the icon look answers to its own switch before it answers to the panel's */
+[data-d-icon-look="web"] .blueprint .bp-wpng { display: none; }
+[data-d-icon-look="web"] .blueprint .bp-wico { display: block; }
+[data-d-icon-look="pixel"] .blueprint .bp-wpng { display: block; }
+[data-d-icon-look="pixel"] .blueprint .bp-wico { display: none; }
+
+/* NOW alternates in both looks, purple to orange on the panel, accent to its negative on the web */
+.bp-now {
+  color: var(--d-now, var(--p-now, var(--accent))); font-weight: 700;
+  animation: bp-now-flip var(--bp-blink-s, 2s) steps(1, end) infinite;
+}
+.blueprint.no-blink .bp-now { animation: none; }
+@keyframes bp-now-flip {
+  0%, 49% { color: var(--d-now, var(--p-now, var(--accent))) }
+  50%, 100% { color: var(--d-now-alt, var(--p-now-alt, var(--accent-c, var(--accent)))) }
+}
 
 /* two columns plus the gap span exactly the width of the tile above */
 .panel-grid {

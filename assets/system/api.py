@@ -108,6 +108,11 @@ def web_font(filename):
     return send_from_directory(os.path.join(_root, "assets", "fonts"), filename)
 
 
+@app.get("/assets/weather/<path:filename>")
+def web_weather_icon(filename):
+    return send_from_directory(os.path.join(_root, "assets", "icons", "weather_conditions"), filename)
+
+
 @app.get("/<path:filename>")
 def web_static(filename):
     resp = make_response(send_from_directory(_web, filename))
@@ -280,9 +285,11 @@ def home():
         "cover_url": np_state.get("cover_url"),
     }
 
-    weather = rt.md_display._weather
+    md = rt.md_display
     dashboard = {
-        "weather": weather,
+        "weather": md.display_weather(),
+        "units": (config.get("dashboard", "weather") or {}).get("units", "metric"),
+        "layout": md.layout_state(),
         "events": calendar_store.get_events(),
     }
 

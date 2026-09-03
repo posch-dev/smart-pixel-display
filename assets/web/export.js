@@ -3,7 +3,7 @@
 // render.js. Nothing here runs on the live clock, every frame is drawn for a time.
 
 const EX_WIDTHS = [600, 720, 1080, 1280, 1440, 1920, 2160, 2560, 3840, 4096];
-const EX_ANIMATED = ['nowplaying', 'clock'];
+const EX_ANIMATED = ['nowplaying', 'clock', 'dashboard'];
 const EX_VIDEO_FMTS = ['webm', 'mp4'];
 
 function _exIsVideo(fmt) { return EX_VIDEO_FMTS.includes(fmt); }
@@ -15,7 +15,7 @@ const EX_FPS = {nowplaying: 30, clock: 2};
 const EX_VIDEO_FPS = 30;
 // the clock has two pictures in a pass, colon on and colon off, so sampling it any
 // faster only writes the same two over and over
-const EX_STATES = {clock: 2};
+const EX_STATES = {clock: 2, dashboard: 2};
 // a track always has something to show even when no line overflows: the head runs the
 // whole song inside one pass, not in real time
 const EX_NP_SWEEP_S = 10;
@@ -126,7 +126,7 @@ function _exPaint() {
   if (_exIsVideo(fmt) && _exScene)
     size += `, ${fmtClock(exSweep(_exMode, _exScene))} at ${EX_VIDEO_FPS} fps`;
   document.getElementById('ex-size').textContent = size;
-  const canAnim = EX_ANIMATED.includes(_exMode) && (fmt === 'svg' || fmt === 'gif');
+  const canAnim = exAnimatable(_exMode, _exScene) && (fmt === 'svg' || fmt === 'gif');
   document.getElementById('ex-anim-row').style.display = canAnim ? '' : 'none';
   // a movable panel is offered moving, until the tick is taken off by hand
   if (canAnim && !_exAnimTouched) document.getElementById('ex-anim').checked = true;
@@ -160,7 +160,7 @@ function _exPaint() {
   for (const f of EX_VIDEO_FMTS) {
     const opt = document.querySelector(`#ex-format option[value="${f}"]`);
     if (!opt) continue;
-    opt.disabled = _exVideoAsked[f] === false || !EX_ANIMATED.includes(_exMode);
+    opt.disabled = _exVideoAsked[f] === false || !exAnimatable(_exMode, _exScene);
     if (opt.disabled && fmt === f) {
       document.getElementById('ex-format').value = 'png';
       return _exPaint();
@@ -211,8 +211,14 @@ function _exPanelRows(scene) {
     return [['Reference', _exEsc(scene.ref.replace(/\s{2,}/g, ' '))],
             ['Translation', _exEsc(scene.translation.replace(/[()]/g, '')) || '-'],
             ['Text', _exEsc(scene.lines.join(' '))]];
-  return [['Weather', _exEsc([scene.temp, scene.cond].filter(Boolean).join('  '))],
-          ['Event', _exEsc([scene.event, scene.eventWhen].filter(Boolean).join(', '))]];
+  const w = [scene.temp != null ? scene.temp + '\u00b0' : '-', scene.condition].filter(Boolean);
+  return [['Weather', _exEsc(w.join('  '))],
+          ['High Low', [scene.high, scene.low].every(v => v == null) ? '-'
+                       : `${scene.high}\u00b0  ${scene.low}\u00b0`],
+          ['Time', `${scene.hh}:${scene.mm}`],
+          ['Date', _exEsc(scene.date)],
+          ['Event', _exEsc(scene.title) || '-'],
+          ['Leaving', scene.mode === 3 && scene.extra ? _exEsc(_rLeaveParts(scene).join(' ')) : '-']];
 }
 
 function _exFrameCount(fmt, sweep) {
@@ -297,7 +303,8 @@ function _exSubject(mode, scene) {
     return `${who}   ${scene.elapsedText} / ${scene.totalText}`;
   }
   if (mode === 'verse_of_day') return scene.ref.replace(/\s{2,}/g, ' ');
-  return [scene.temp, scene.cond].filter(Boolean).join(', ');
+  return [scene.temp != null ? scene.temp + '°' : null, scene.condition, scene.title]
+         .filter(Boolean).join(', ');
 }
 
 // cancel during a render is an abort, the loops unwind on their own
@@ -378,7 +385,11 @@ function _exWrap(str, size, maxW, maxLines) {
 }
 
 async function _exCoverDataUri(url) {
-  const src = bpCoverUrl(url);
+  return await _exDataUri(bpCoverUrl(url));
+}
+
+// a file cannot point at the pi, every picture it carries has to be inlined
+async function _exDataUri(src) {
   if (!src) return null;
   const blob = await fetch(src).then(r => r.ok ? r.blob() : null).catch(() => null);
   if (!blob) return null;
@@ -437,24 +448,29 @@ async function exScene(mode, data) {
     scene.plans = {title: _exPlanFromDom('bp-track'), artist: _exPlanFromDom('bp-artist'),
                    album: _exPlanFromDom('bp-album')};
   } else {
-    const dash = data.dashboard || {};
-    const w = dash.weather || {};
-    scene.temp = w.temp_now != null ? Math.round(w.temp_now) + '°' : '—';
-    const parts = [];
-    if (w.condition) parts.push(w.condition);
-    if (w.temp_high != null) parts.push('H ' + Math.round(w.temp_high) + '°');
-    if (w.temp_low != null) parts.push('L ' + Math.round(w.temp_low) + '°');
-    scene.cond = parts.join('  ·  ');
-    scene.icon = BP_WEATHER_ICONS[w.condition] || '#ico-cloud';
-    const ev = (dash.events || [])[0];
-    scene.event = (ev && ev.title) || 'No upcoming events';
-    scene.eventWhen = ev ? _eventWhen(ev) : '';
+    Object.assign(scene, bpDashScene(data.dashboard || {}));
+    scene.date = bpLongDateText(new Date());
+    scene.blink = (cfg.clock?.blink_interval ?? 1) * 2;
+    scene.pixel = previewModeFor('dashboard') === 'pixel';
+    scene.snap = bpDashSnapshot();
+    // a file cannot point at the pi, a picture the tile is still loading is inlined here
+    for (const o of (scene.snap ? scene.snap.ops : []))
+      if (o.op === 'image' && !o.src.startsWith('data:'))
+        o.src = await bpWeatherPng(o.src) || o.src;
   }
   return scene;
 }
 
 // how long one full pass takes, zero when nothing moves
+// the dashboard holds still unless NOW is blinking, which is the only thing on it
+// that moves. one pass is one blink period, two pictures, like the clock
+function exAnimatable(mode, scene) {
+  if (mode !== 'dashboard') return EX_ANIMATED.includes(mode);
+  return !!(scene && scene.mode === 3 && scene.late && scene.extra && scene.blinkNow);
+}
+
 function exCycle(mode, scene) {
+  if (mode === 'dashboard') return exAnimatable(mode, scene) ? (scene.blink || 0) : 0;
   if (mode === 'clock') return scene.blink || 0;
   if (mode !== 'nowplaying') return 0;
   const p = scene.plans || {};
