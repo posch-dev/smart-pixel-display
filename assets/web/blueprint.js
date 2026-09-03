@@ -316,6 +316,16 @@ let _npDur = NP_FALLBACK_DURATION_S, _npElapsed = 0, _npAt = 0, _npPlaying = fal
 let _npAccents = null;
 const _npAccentOverride = {};
 
+// what is painted right now, so taking a colour over by hand starts where it left off
+function npAccentNow(i) {
+  const wrap = document.getElementById('bp-np');
+  const raw = wrap && getComputedStyle(wrap).getPropertyValue('--np' + (i + 1)).trim();
+  if (raw) return cssHex(raw);
+  const root = getComputedStyle(document.documentElement);
+  return cssHex(root.getPropertyValue(i ? '--accent-hd' : '--accent')
+             || root.getPropertyValue('--accent'));
+}
+
 function setNpAccent(i, hex) {
   if (hex) _npAccentOverride[i] = hex; else delete _npAccentOverride[i];
   _applyNpAccents();
@@ -327,7 +337,7 @@ function _applyNpAccents() {
   const pixel = _activePreview === 'pixel';
   for (let i = 0; i < 3; i++) {
     const name = '--np' + (i + 1);
-    const own = pixel && _npAccentOverride[i];
+    const own = _npAccentOverride[i];
     if (own) wrap.style.setProperty(name, own);
     else if (pixel && _npAccents && _npAccents[i]) wrap.style.setProperty(name, `rgb(${_npAccents[i].join(',')})`);
     else wrap.style.removeProperty(name);

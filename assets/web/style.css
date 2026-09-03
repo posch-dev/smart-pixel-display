@@ -249,6 +249,12 @@ header {
 .prev-row.global .seg { width: 0; opacity: 0; border-width: 0; }
 .prev-row.global .bright-div { opacity: 0; }
 .pv-auto { font-size: 11px; color: var(--muted); letter-spacing: .3px; }
+.pv-undo {
+  background: none; border: none; padding: 0; cursor: pointer; color: var(--accent);
+  display: flex; align-items: center; flex-shrink: 0;
+}
+.pv-undo .ico { width: 15px; height: 15px; }
+.pv-undo:disabled { color: var(--muted); opacity: .4; cursor: default; }
 .bright-div { width: 1px; height: 18px; background: var(--border); flex-shrink: 0; transition: opacity .2s; }
 .bright-label { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 40px; text-align: right; }
 input[type=range] {
@@ -378,6 +384,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 /* overlay against a near-white card leaves nothing visible */
 [data-theme="light"] .dot-raster { mix-blend-mode: normal; opacity: .55; }
 [data-raster="off"] .dot-raster { display: none; }
+[data-glow="off"] .bp-cover { box-shadow: none; }
 /* a frozen page holds the picture, scroll and blink included */
 [data-frozen="on"] .blueprint, [data-frozen="on"] .blueprint * { animation-play-state: paused; }
 
@@ -526,7 +533,12 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 /* the digits sit 0.1448em below their line box top and the date fills its own box down
    to the descender, so half that dead space is what the block has to ride up */
 .bp-clock-wrap { transform: translateY(-1.12cqw); }
-.bp-clock-wrap .bp-date { font-size: 3.2cqw; margin-top: 1cqw; }
+.bp-clock-wrap .bp-date { font-size: 3.2cqw; margin-top: 1cqw; color: var(--cl-date, var(--muted)); }
+/* with no date under it the clock takes the room the date would have had, and the
+   ride up follows the size, it is 0.0723 of it */
+[data-date="off"] .bp-date { display: none; }
+[data-date="off"] .bp-clock { font-size: 20cqw; line-height: 20cqw; }
+[data-date="off"] .bp-clock-wrap { transform: translateY(-1.45cqw); }
 .bp-ord { font-size: .62em; line-height: 0; vertical-align: super; }
 .bp-ico { width: 8cqw; height: 8cqw; color: var(--accent); }
 .bp-ref { color: var(--vs, var(--accent)); white-space: pre-wrap; }
@@ -534,7 +546,11 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   max-width: 88cqw; margin-inline: auto; color: var(--text); font-size: 2.5cqw;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
-.bp-trans { font-size: 2.4cqw; color: var(--muted); }
+.bp-trans { font-size: 2.4cqw; color: var(--vs-trans, var(--muted)); }
+/* the room the translation gave up is taken as size, not left as air below */
+[data-trans="off"] .bp-trans { display: none; }
+[data-trans="off"] .bp-ref { font-size: 4.6cqw; }
+[data-trans="off"] .bp-clamp { -webkit-line-clamp: 4; font-size: 2.875cqw; }
 
 .bp-np { display: flex; align-items: center; gap: 3.5cqw; text-align: left; }
 /* square, inset by the same amount on every side of the 4:1 tile */
@@ -551,12 +567,15 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   box-shadow: inset 0 0 0 .2cqw color-mix(in srgb, var(--np1, var(--accent)) 40%, transparent);
 }
 .bp-cover-ph .ico { width: 7cqw; height: 7cqw; color: var(--np1, var(--accent)); }
-.bp-cover { box-shadow: 0 0 4.15cqw color-mix(in srgb, var(--np1, var(--accent)) 41.5%, transparent); }
+.bp-cover { box-shadow: 0 0 4.15cqw color-mix(in srgb, var(--np-glow, var(--np1, var(--accent))) 41.5%, transparent); }
 .bp-np-meta { flex: 1; min-width: 0; }
 .bp-np-row { display: flex; align-items: baseline; gap: var(--np-gap, 3.5cqw); }
-.bp-track { font-size: 4.2cqw; font-weight: 700; color: var(--np1, var(--accent)); text-align: left; }
-.bp-album { font-size: 2.4cqw; color: var(--muted); justify-content: safe flex-end; flex: 1 1 0; min-width: 0; }
-.bp-artist { font-size: 2.8cqw; text-align: left; flex: 0 0 auto; max-width: 60%; min-width: 0; color: var(--muted-hi); }
+.bp-track { font-size: 4.2cqw; font-weight: 700; color: var(--np-title, var(--np1, var(--accent))); text-align: left; }
+.bp-album { font-size: 2.4cqw; color: var(--np-album, var(--muted)); justify-content: safe flex-end; flex: 1 1 0; min-width: 0; }
+/* with no album beside it the artist may run the whole line */
+[data-album="off"] .bp-album { display: none; }
+[data-album="off"] .bp-artist { max-width: 100%; }
+.bp-artist { font-size: 2.8cqw; text-align: left; flex: 0 0 auto; max-width: 60%; min-width: 0; color: var(--np-artist, var(--muted-hi)); }
 
 /* long lines run the same way the panel scrolls them: out, pause, back */
 .bp-scroll { display: flex; overflow: hidden; }
@@ -569,7 +588,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 }
 .bp-bar {
   position: relative; --head: 1.7cqw;
-  height: .9cqw; border-radius: .45cqw; background: var(--border); margin-top: 2.6cqw;
+  height: .9cqw; border-radius: .45cqw; background: var(--np-track, var(--border)); margin-top: 2.6cqw;
 }
 .bp-bar-fill { height: 100%; background: var(--np1, var(--accent)); border-radius: inherit; width: 0; }
 /* clamped so the head never hangs off either end of the track */
@@ -581,6 +600,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 }
 .bp-times { display: flex; justify-content: space-between; font-size: 2.2cqw; color: var(--muted); margin-top: .9cqw; font-variant-numeric: tabular-nums; }
 #bp-elapsed { color: var(--np2, var(--accent)); }
+#bp-total { color: var(--np-total, var(--muted)); }
 
 .bp-dash { display: flex; align-items: center; justify-content: center; gap: 4cqw; text-align: left; }
 .bp-wico { width: 10cqw; height: 10cqw; color: var(--ds, var(--accent)); flex-shrink: 0; }

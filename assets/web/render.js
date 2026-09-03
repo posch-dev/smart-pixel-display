@@ -68,6 +68,14 @@ function rPalette(mode) {
     bg:     _rVar('--bg', '#0d0d0d'),
     accent: _rVar('--accent', '#87a878'),
     np1: _rVar('--np1', '') || _rVar('--accent', '#87a878'),
+    glow: _rVar('--np-glow', '') || _rVar('--np1', '') || _rVar('--accent', '#87a878'),
+    track: _rVar('--np-track', '') || _rVar('--border', '#2a2a2a'),
+    title: _rVar('--np-title', '') || _rVar('--np1', '') || _rVar('--accent', '#87a878'),
+    album: _rVar('--np-album', '') || _rVar('--muted', '#606060'),
+    artist: _rVar('--np-artist', '') || _rVar('--muted-hi', '#9c9c9c'),
+    total: _rVar('--np-total', '') || _rVar('--muted', '#606060'),
+    trans: _rVar('--vs-trans', '') || _rVar('--muted', '#606060'),
+    date: _rVar('--cl-date', '') || _rVar('--muted', '#606060'),
     np2: _rVar('--np2', '') || _rVar('--accent-hd', '') || _rVar('--accent', '#87a878'),
     np3: _rVar('--np3', '') || _rVar('--np1', '') || _rVar('--accent', '#87a878'),
     cl:  _rVar('--cl', '') || _rVar('--accent', '#87a878'),
@@ -165,10 +173,10 @@ const NP_GAP_SPACES = 5;
 
 function rNpRowGap(size) { return rTextWidth(' '.repeat(NP_GAP_SPACES), size); }
 
-function rNpRowSplit(mw, artNat, size) {
+function rNpRowSplit(mw, artNat, size, full) {
   const gap = rNpRowGap(size);
-  const artW = Math.min(artNat, mw * NP_ARTIST_MAX);
-  return {gap, artW, albW: Math.max(0, mw - artW - gap)};
+  const artW = Math.min(artNat, full ? mw : mw * NP_ARTIST_MAX);
+  return {gap, artW, albW: full ? 0 : Math.max(0, mw - artW - gap)};
 }
 
 // keyframes 0 and 14 percent at rest, 50 and 64 percent at the far end
@@ -206,10 +214,11 @@ function _rBackground(pal) {
 
 function _rClock(scene, t, pal, animate, decl) {
   const ops = [];
-  const size = 15.5 * CQ, dateSize = 3.2 * CQ;
+  const noDate = document.documentElement.dataset.date === 'off';
+  const size = (noDate ? 20 : 15.5) * CQ, dateSize = 3.2 * CQ;
   const dateLine = dateSize * 1.25;
-  const blockH = size + CQ + dateLine;
-  const top = (R_H - blockH) / 2 - 1.12 * CQ;
+  const blockH = noDate ? size : size + CQ + dateLine;
+  const top = (R_H - blockH) / 2 - size * 0.0723;
 
   const blink = animate && decl && scene.blink;
   const on = blink || scene.colonOn;
@@ -238,18 +247,24 @@ function _rClock(scene, t, pal, animate, decl) {
     x += g.adv;
   }
 
+  if (noDate) return ops;
   const dBase = rBase(top + size + CQ, dateLine, dateSize);
-  ops.push(text(R_W / 2, dBase, scene.date, dateSize, pal.muted, {anchor: 'middle'}));
+  ops.push(text(R_W / 2, dBase, scene.date, dateSize, pal.date, {anchor: 'middle'}));
   return ops;
 }
 
+// without the translation under it the block grows rather than drifting down
+const VS_NO_TRANS_SCALE = 1.15;
+
 function _rVerse(scene, t, pal) {
   const ops = [];
-  const refSize = 4 * CQ, bodySize = 2.5 * CQ, transSize = 2.4 * CQ;
+  const noTrans = document.documentElement.dataset.trans === 'off';
+  const k = noTrans ? VS_NO_TRANS_SCALE : 1;
+  const refSize = 4 * CQ * k, bodySize = 2.5 * CQ * k, transSize = 2.4 * CQ;
   const lines = scene.lines;
   const refLine = rFontBox(refSize, 600).h;
-  const bodyLine = bodySize * 1.25, transLine = transSize * 1.25;
-  const blockH = refLine + 6 + lines.length * bodyLine + 6 + transLine;
+  const bodyLine = bodySize * 1.25, transLine = noTrans ? 0 : transSize * 1.25;
+  const blockH = refLine + 6 + lines.length * bodyLine + (noTrans ? 0 : 6 + transLine);
   let top = (R_H - blockH) / 2;
   ops.push(text(R_W / 2, rBase(top, refLine, refSize, 600), scene.ref, refSize, pal.vs,
                 {anchor: 'middle', weight: 600}));
@@ -258,8 +273,9 @@ function _rVerse(scene, t, pal) {
     ops.push(text(R_W / 2, rBase(top, bodyLine, bodySize), line, bodySize, pal.text, {anchor: 'middle'}));
     top += bodyLine;
   }
+  if (noTrans) return ops;
   top += 6;
-  ops.push(text(R_W / 2, rBase(top, transLine, transSize), scene.translation, transSize, pal.muted,
+  ops.push(text(R_W / 2, rBase(top, transLine, transSize), scene.translation, transSize, pal.trans,
                 {anchor: 'middle'}));
   return ops;
 }
@@ -278,7 +294,8 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   const covR = 1.6 * CQ;
   if (scene.cover) {
     // the artwork throws the panel colour outwards, the placeholder carries it instead
-    ops.push(still(glow(R_PAD, covY, cov, cov, covR, rAlpha(pal.np1, 0.415), 4.15 * CQ)));
+    if (document.documentElement.dataset.glow !== 'off')
+      ops.push(still(glow(R_PAD, covY, cov, cov, covR, rAlpha(pal.glow, 0.415), 4.15 * CQ)));
     ops.push(still({op: 'image', x: R_PAD, y: covY, w: cov, h: cov, r: covR, href: scene.cover}));
   } else {
     ops.push(still(gradient(R_PAD, covY, cov, cov, covR,
@@ -304,30 +321,32 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   const decling = animate && decl;
   const tPlan = plans.title || rScrollPlan(rTextWidth(scene.title, trackSize, 700), mw);
   ops.push(clip(mx, y, mw, trackLine, rScrollAt(tPlan, t),
-    [text(0, rBase(0, trackLine, trackSize, 700), scene.title, trackSize, pal.np1,
+    [text(0, rBase(0, trackLine, trackSize, 700), scene.title, trackSize, pal.title,
           {weight: 700, width: tPlan.textW})],
     _rScrollAnim(tPlan, decling)));
   y += trackLine;
 
+  const noAlbum = document.documentElement.dataset.album === 'off';
   const artNat = plans.artist?.textW ?? rTextWidth(scene.artist, artSize);
-  const split = rNpRowSplit(mw, artNat, artSize);
-  const artW = plans.artist?.boxW ?? split.artW;
-  const albW = plans.album?.boxW ?? Math.max(0, mw - artW - split.gap);
+  const split = rNpRowSplit(mw, artNat, artSize, noAlbum);
+  const artW = noAlbum ? split.artW : (plans.artist?.boxW ?? split.artW);
+  const albW = noAlbum ? 0 : (plans.album?.boxW ?? Math.max(0, mw - artW - split.gap));
   const aPlan = plans.artist || rScrollPlan(rTextWidth(scene.artist, artSize), artW);
   const lPlan = plans.album || rScrollPlan(rTextWidth(scene.album, albSize), albW);
   // both sit on the artist baseline, the row aligns on it
   const rowBase = rBase(0, rowH, artSize);
   ops.push(clip(mx, y, artW, rowH, rScrollAt(aPlan, t),
-    [text(0, rowBase, scene.artist, artSize, pal.mutedHi, {width: aPlan.textW})],
+    [text(0, rowBase, scene.artist, artSize, pal.artist, {width: aPlan.textW})],
     _rScrollAnim(aPlan, decling)));
-  ops.push(clip(mx + mw - albW, y, albW, rowH, rScrollAt(lPlan, t),
-    [text(0, rowBase, scene.album, albSize, pal.muted, {width: lPlan.textW})],
-    _rScrollAnim(lPlan, decling)));
+  if (!noAlbum)
+    ops.push(clip(mx + mw - albW, y, albW, rowH, rScrollAt(lPlan, t),
+      [text(0, rowBase, scene.album, albSize, pal.album, {width: lPlan.textW})],
+      _rScrollAnim(lPlan, decling)));
   y += rowH + barTop;
 
   const sweep = animate && decl && scene.sweep;
   const pct = Math.min(1, scene.elapsed / scene.duration);
-  ops.push(rect(mx, y, mw, barH, pal.border, barH / 2));
+  ops.push(rect(mx, y, mw, barH, pal.track, barH / 2));
   const fill = rect(mx, y, Math.max(0, mw * pct), barH, pal.np1, barH / 2);
   if (sweep) fill.anim = {type: 'grow', from: 0, to: mw, dur: sweep};
   ops.push(fill);
@@ -349,7 +368,7 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   } else {
     ops.push(text(mx, tBase, scene.elapsedText, timeSize, pal.np2));
   }
-  ops.push(text(mx + mw, tBase, scene.totalText, timeSize, pal.muted, {anchor: 'end'}));
+  ops.push(text(mx + mw, tBase, scene.totalText, timeSize, pal.total, {anchor: 'end'}));
   return ops;
 }
 

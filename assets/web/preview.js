@@ -1,28 +1,20 @@
 // The preview on a page of its own. It starts from what the dashboard saved in its
-// cookies and then keeps its own overrides, so changing anything here leaves the
-// dashboard alone.
+// cookies and overrides from there for as long as the page is open. Nothing is kept:
+// a reload lands where opening it fresh from the dashboard lands.
 
 const PV_MODES = ['clock', 'verse_of_day', 'nowplaying', 'dashboard'];
 const PV_LABELS = {clock: 'Clock', verse_of_day: 'Verse', nowplaying: 'NowPlaying', dashboard: 'Dashboard'};
 
 let cfg = {};
-let pv = {follow: 'live', theme: null, accent: null, grid: true, panels: {}, np: null};
+let pv = {follow: 'live', theme: null, accent: null, panels: {}, on: {raster: true, glow: true, album: true, trans: true, date: true},
+          np: [{auto: true, hex: '#87a878'}, {auto: true, hex: '#87a878'}],
+          col: {raster: null, card: null, bg: null, glow: null, track: null,
+                title: null, album: null, trans: null, date: null, artist: null,
+                total: null}};
 
 // not saved on purpose, a page opened tomorrow should not still hold yesterday's song
 let _pvFrozen = false;
 let _pvActive = null;
-
-function loadPv() {
-  try { pv = Object.assign(pv, JSON.parse(localStorage.getItem('spd_pv') || '{}')); } catch {}
-  pv.panels = pv.panels || {};
-  pv.grid = pv.grid !== false;
-  if (!Array.isArray(pv.np) || pv.np.length !== 2)
-    pv.np = [{auto: true, hex: '#87a878'}, {auto: true, hex: '#87a878'}];
-}
-
-function savePv() {
-  localStorage.setItem('spd_pv', JSON.stringify(pv));
-}
 
 // one sprite, kept in index.html, pulled in so the two never drift apart
 async function loadSprite() {
@@ -32,12 +24,18 @@ async function loadSprite() {
   if (sprite) document.getElementById('pv-sprite').appendChild(sprite);
 }
 
+// the three colours belong to the theme, so switching it hands them back
 function setPvTheme(mode) {
   pv.theme = mode;
   document.documentElement.dataset.theme = mode;
   document.getElementById('pv-theme-dark').classList.toggle('on', mode === 'dark');
   document.getElementById('pv-theme-light').classList.toggle('on', mode === 'light');
-  savePv();
+  pv.col = {raster: null, card: null, bg: null, glow: null, track: null,
+            title: null, album: null, trans: null, date: null, artist: null,
+            total: null};
+  applyPvColors();
+  buildPvColors();
+  buildPvPanels();
 }
 
 function setPvAccent(hex) {
@@ -45,12 +43,10 @@ function setPvAccent(hex) {
   previewAccent(pv.accent);
   document.getElementById('pv-accent').value = pv.accent;
   paintPvFavicon();
-  savePv();
 }
 
 function setPvFollow(what) {
   pv.follow = what;
-  savePv();
   buildPvPanels();
   pollPreview();
 }
@@ -67,23 +63,110 @@ function togglePvFreeze() {
   if (!_pvFrozen) pollPreview();
 }
 
-function setPvGrid(on) {
-  pv.grid = on;
-  savePv();
-  applyPvGrid();
+// card and grain sit on the tile so the menu keeps the theme, the ground has to be the
+// page or the colour would not show around the tile at all. the third field says the row
+// carries a switch as well as a colour.
+const PV_COLS = [['raster', 'Grid', true], ['card', 'Card'], ['bg', 'Background']];
+const PV_COL_VAR = {raster: '--raster', card: '--card', bg: '--bg', glow: '--np-glow',
+                    track: '--np-track', title: '--np-title', album: '--np-album',
+                    trans: '--vs-trans', date: '--cl-date', artist: '--np-artist',
+                    total: '--np-total'};
+
+function setPvColOn(key, on) {
+  pv.on[key] = on;
+  applyPvColOn();
+  buildPvColors();
+  buildPvPanels();
 }
 
-function applyPvGrid() {
-  document.documentElement.dataset.raster = pv.grid ? '' : 'off';
-  const el = document.getElementById('pv-grid');
-  if (el) el.checked = pv.grid;
+function applyPvColOn() {
+  const set = document.documentElement.dataset;
+  set.raster = pv.on.raster ? '' : 'off';
+  set.glow = pv.on.glow ? '' : 'off';
+  set.album = pv.on.album ? '' : 'off';
+  set.trans = pv.on.trans ? '' : 'off';
+  set.date = pv.on.date ? '' : 'off';
+}
+
+function _pvColHost(key) {
+  return key === 'bg' ? document.documentElement : document.getElementById('home-blueprint');
+}
+
+function applyPvColors() {
+  for (const key of Object.keys(PV_COL_VAR)) {
+    const host = _pvColHost(key);
+    if (!host) continue;
+    if (pv.col[key]) host.style.setProperty(PV_COL_VAR[key], pv.col[key]);
+    else host.style.removeProperty(PV_COL_VAR[key]);
+  }
+}
+
+function pvColorNow(key) {
+  if (pv.col[key]) return pv.col[key];
+  // neither the shine nor the track carries a colour until one is picked
+  if (key === 'glow') return npAccentNow(0);
+  if (key === 'title') return npAccentNow(0);
+  const fallback = {track: '--border', album: '--muted', trans: '--muted',
+                    date: '--muted', artist: '--muted-hi', total: '--muted'}[key];
+  if (fallback) return cssHex(getComputedStyle(_pvColHost(key)).getPropertyValue(fallback));
+  const host = _pvColHost(key);
+  return host ? cssHex(getComputedStyle(host).getPropertyValue(PV_COL_VAR[key])) : '#000000';
+}
+
+function setPvColor(key, hex) {
+  pv.col[key] = hex;
+  applyPvColors();
+  paintPvUndo(key);
+}
+
+function resetPvColor(key) {
+  pv.col[key] = null;
+  applyPvColors();
+  const el = document.querySelector(`input[type=color][data-k="${key}"]`);
+  if (el) el.value = pvColorNow(key);
+  paintPvUndo(key);
+}
+
+// the shine follows the panel accent until one is picked, and in pixel mode that
+// accent arrives with the song rather than with the page
+function paintPvGlow() {
+  const el = document.querySelector('input[type=color][data-k="glow"]');
+  if (el && !pv.col.glow) el.value = pvColorNow('glow');
+}
+
+function paintPvUndo(key) {
+  const b = document.querySelector(`.pv-undo[data-k="${key}"]`);
+  if (!b) return;
+  b.disabled = !pv.col[key];
+}
+
+// the picker is not rebuilt while it is open, only the arrow beside it is repainted
+function _pvColorRow(key, label, hasSwitch) {
+  const shown = !hasSwitch || pv.on[key];
+  const pick = shown ? `<button class="pv-undo" data-k="${key}" ${pv.col[key] ? '' : 'disabled'}
+      onclick="resetPvColor('${key}')" title="Back to the theme colour">
+      <svg class="ico"><use href="#ico-undo"/></svg></button>
+    <input type="color" data-k="${key}" value="${pvColorNow(key)}"
+      oninput="setPvColor('${key}', this.value)">` : '';
+  const sw = hasSwitch
+    ? `${shown ? '<span class="bright-div"></span>' : ''}
+       <label class="toggle"><input type="checkbox" ${pv.on[key] ? 'checked' : ''}
+         onchange="setPvColOn('${key}', this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>`
+    : '';
+  return `<div class="row"><div class="row-left"><div class="row-label">${label}</div></div>
+    <div class="row-right bright-row">${pick}${sw}</div></div>`;
+}
+
+function buildPvColors() {
+  const box = document.getElementById('pv-colors');
+  if (!box) return;
+  box.innerHTML = PV_COLS.map(c => _pvColorRow(...c)).join('');
 }
 
 // the renderers read the panel choice off cfg, so the override is written there
 function setPvPanel(mode, which) {
   pv.panels[mode] = which;
   applyPvPanels();
-  savePv();
   buildPvPanels();
   _bpMode = null;
   pollPreview();
@@ -96,7 +179,6 @@ function adoptPvPanels() {
     // anything but the two real modes counts as unasked, stale values included
     if (pv.panels[m] !== 'web' && pv.panels[m] !== 'pixel') pv.panels[m] = previewModeFor(m);
   }
-  savePv();
 }
 
 function applyPvPanels() {
@@ -120,6 +202,8 @@ function pvSubjectMode() {
 const PV_ACCENT_LABELS = ['Primary Accent', 'Secondary Accent'];
 
 function _pvPanelOpts(mode) {
+  if (mode === 'clock') return _pvColorRow('date', 'Date', true);
+  if (mode === 'verse_of_day') return _pvColorRow('trans', 'Translation', true);
   if (mode !== 'nowplaying') return '';
   let html = `<div class="row">
     <div class="row-left"><div class="row-label">Playhead</div></div>
@@ -127,7 +211,6 @@ function _pvPanelOpts(mode) {
       min="0" max="1000" value="${Math.round(1000 * blueprintPlayhead())}"
       oninput="setPvHead(this.value)"></div></div>
   </div>`;
-  if (pv.panels.nowplaying !== 'pixel') return html;
   PV_ACCENT_LABELS.forEach((label, i) => {
     const a = pv.np[i];
     html += `<div class="row">
@@ -142,11 +225,14 @@ function _pvPanelOpts(mode) {
       </div>
     </div>`;
   });
-  return html;
+  return html + _pvColorRow('title', 'Title') + _pvColorRow('artist', 'Artist')
+              + _pvColorRow('album', 'Album', true) + _pvColorRow('track', 'Track')
+              + _pvColorRow('total', 'Total Time') + _pvColorRow('glow', 'Glow', true);
 }
 
 function buildPvPanels() {
   const box = document.getElementById('pv-panels');
+  if (!Object.keys(pv.panels).length) return;
   const subject = pvSubjectMode();
   const switches = pvShownModes().map(m => {
     const own = pv.panels[m];
@@ -160,19 +246,20 @@ function buildPvPanels() {
   // a panel with nothing of its own keeps its heading out of the way
   box.innerHTML = `<div class="card-title">Panel Appearance</div>${switches}`
     + (opts ? `<div class="card-title">${PV_LABELS[subject]} Customizations</div>${opts}` : '');
+  paintPvGlow();
 }
 
 // the toggle says the delivered colour wins, so the picker only shows what arrived
 function setPvNpAuto(i, auto) {
+  // taking it over by hand starts on the colour that is on screen, not on a stale one
+  if (!auto) pv.np[i].hex = npAccentNow(i);
   pv.np[i].auto = auto;
-  savePv();
   applyPvNp();
   buildPvPanels();
 }
 
 function setPvNpAccent(i, hex) {
   pv.np[i].hex = hex;
-  savePv();
   applyPvNp();
 }
 
@@ -223,16 +310,18 @@ function pollPreview() {
       if (pv.follow === 'live') buildPvPanels();
     }
     paintPvHead();
+    paintPvGlow();
   }).catch(() => {});
 }
 
 async function initPreview() {
-  loadPv();
   await loadSprite();
   setPvTheme(pv.theme || getCookie('spd_theme') || 'dark');
   setPvAccent(pv.accent || getCookie('spd_accent') || '#87a878');
   _applyPvPreviewMode(getCookie('spd_preview') || 'web');
-  applyPvGrid();
+  applyPvColOn();
+  applyPvColors();
+  buildPvColors();
   cfg = await fetch('/config').then(r => r.json());
   adoptPvPanels();
   applyPvPanels();

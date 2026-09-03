@@ -415,7 +415,9 @@ async function exScene(mode, data) {
   } else if (mode === 'verse_of_day') {
     const v = data.verse || {};
     scene.ref = _verseReference(v.reference);
-    scene.lines = _exWrap(v.text, 2.5 * CQ, 88 * CQ, 3);
+    const noTrans = document.documentElement.dataset.trans === 'off';
+    scene.lines = _exWrap(v.text, 2.5 * CQ * (noTrans ? VS_NO_TRANS_SCALE : 1),
+                          88 * CQ, noTrans ? 4 : 3);
     scene.translation = v.translation
       ? '(' + (BP_TRANSLATIONS[v.translation] || v.translation.split(':').pop().toUpperCase()) + ')'
       : '';
