@@ -1298,11 +1298,25 @@ async function init() {
     await loadStatus();
     _pollTimer = setInterval(_tick, POLL_ACTIVE);
     setInterval(pollHome, 1000);
+    showVersion();
     tickHeaderClock();
     setInterval(tickHeaderClock, 1000);
   } catch (e) {
     console.error('init failed:', e);
   }
+}
+
+const REPO_URL = 'https://github.com/posch-dev/smart-pixel-dashboard';
+
+// the about block stays blank until the pi answers, a wrong version is worse than none
+function showVersion() {
+  const el = document.getElementById('about-version');
+  if (!el) return;
+  fetch('/version').then(r => r.json()).then(d => {
+    if (!d.version) return;
+    el.textContent = 'v' + d.version;
+    el.href = REPO_URL + '/releases/tag/v' + d.version;
+  }).catch(() => {});
 }
 
 function initAppearance() {

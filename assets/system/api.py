@@ -13,6 +13,7 @@ sys.path.insert(0, _root)
 sys.path.insert(0, os.path.join(_root, "panels", "dashboard"))
 
 import assets.system.config as config
+from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.webhooks as webhooks
 import calendar_store
@@ -293,6 +294,11 @@ def dashboard_layouts():
 def trigger_dashboard():
     scheduler.trigger("dashboard")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
+
+
+@app.get("/version")
+def version():
+    return jsonify({"version": VERSION}), 200
 
 
 @app.get("/home")
