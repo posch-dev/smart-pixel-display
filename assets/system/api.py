@@ -2,8 +2,9 @@ import os
 import sys
 import asyncio
 import logging
+import hashlib
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
@@ -202,6 +203,73 @@ def dashboard_status():
 def trigger_dashboard():
     scheduler.trigger("dashboard")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
+
+
+@app.get("/home")
+def home():
+    import startup
+    import panels.dashboard.display as dd
+
+    status = scheduler.get_status()
+
+    verse_data = startup.get_verse_data()
+    verse = None
+    if verse_data:
+        verse = {
+            "reference": verse_data["reference"],
+            "text": verse_data["text"],
+            "translation": verse_data["translation"],
+        }
+
+    np_state = startup.np_poller.get_state()
+    cover_etag = None
+    if np_state.get("cover"):
+        cover_etag = hashlib.md5(np_state["cover"]).hexdigest()[:12]
+    nowplaying = {
+        "playing": bool(np_state.get("playing") and np_state.get("title")),
+        "title": np_state.get("title"),
+        "artist": np_state.get("artist"),
+        "album": np_state.get("album"),
+        "duration_s": np_state.get("duration_s"),
+        "elapsed_s": round(np_state.get("elapsed_s", 0)),
+        "cover_etag": cover_etag,
+    }
+
+    weather = dd._weather
+    dashboard = {
+        "weather": weather,
+        "events": calendar_store.get_events(),
+    }
+
+    return jsonify({
+        "active_mode": status.get("active_mode", "clock"),
+        "active_for_s": status.get("active_for_s", 0),
+        "connected": _ble_connected,
+        "display_on": status.get("display_on", True),
+        "in_active_hours": _in_active_hours(),
+        "verse": verse,
+        "nowplaying": nowplaying,
+        "dashboard": dashboard,
+    }), 200
+
+
+@app.get("/nowplaying/cover")
+def nowplaying_cover():
+    import startup
+    state = startup.np_poller.get_state()
+    cover = state.get("cover")
+    if not cover:
+        return "", 404
+
+    etag = hashlib.md5(cover).hexdigest()[:12]
+    if request.headers.get("If-None-Match") == etag:
+        return "", 304
+
+    resp = make_response(cover)
+    resp.headers["Content-Type"] = "image/jpeg"
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 def run(host: str = "0.0.0.0", port: int = 5000) -> None:
