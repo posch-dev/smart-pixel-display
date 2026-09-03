@@ -6,7 +6,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import asyncio
 import io
 import binascii
-import urllib.parse
 import requests
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
@@ -28,39 +27,7 @@ BOOK_FONT_SIZE = 14
 NUM_FONT_SIZE  = 14
 WORD_GAP       = 2
 
-# bolls.life needs book numbers. All 66 books, normalized uppercase, with common variants.
-_BOOK_NUMS = {
-    "GENESIS": 1, "EXODUS": 2, "LEVITICUS": 3, "NUMBERS": 4, "DEUTERONOMY": 5,
-    "JOSHUA": 6, "JUDGES": 7, "RUTH": 8, "1 SAMUEL": 9, "2 SAMUEL": 10,
-    "1 KINGS": 11, "2 KINGS": 12, "1 CHRONICLES": 13, "2 CHRONICLES": 14,
-    "EZRA": 15, "NEHEMIAH": 16, "ESTHER": 17, "JOB": 18, "PSALMS": 19,
-    "PSALM": 19, "PROVERBS": 20, "ECCLESIASTES": 21, "SONG OF SOLOMON": 22,
-    "SONG OF SONGS": 22, "ISAIAH": 23, "JEREMIAH": 24, "LAMENTATIONS": 25,
-    "EZEKIEL": 26, "DANIEL": 27, "HOSEA": 28, "JOEL": 29, "AMOS": 30,
-    "OBADIAH": 31, "JONAH": 32, "MICAH": 33, "NAHUM": 34, "HABAKKUK": 35,
-    "ZEPHANIAH": 36, "HAGGAI": 37, "ZECHARIAH": 38, "MALACHI": 39,
-    "MATTHEW": 40, "MARK": 41, "LUKE": 42, "JOHN": 43, "ACTS": 44,
-    "ROMANS": 45, "1 CORINTHIANS": 46, "2 CORINTHIANS": 47, "GALATIANS": 48,
-    "EPHESIANS": 49, "PHILIPPIANS": 50, "COLOSSIANS": 51,
-    "1 THESSALONIANS": 52, "2 THESSALONIANS": 53, "1 TIMOTHY": 54,
-    "2 TIMOTHY": 55, "TITUS": 56, "PHILEMON": 57, "HEBREWS": 58,
-    "JAMES": 59, "1 PETER": 60, "2 PETER": 61, "1 JOHN": 62,
-    "2 JOHN": 63, "3 JOHN": 64, "JUDE": 65, "REVELATION": 66,
-}
-
 _session = requests.Session()
-
-
-def _parse_reference(ref: str):
-    # "1 CORINTHIANS 13:2" -> ("1 CORINTHIANS", 13, 2, 2)
-    # "ROMANS 15:1-2" -> ("ROMANS", 15, 1, 2)
-    book, rest = ref.rsplit(" ", 1)
-    chapter, verses = rest.split(":")
-    if "-" in verses:
-        v_from, v_to = verses.split("-", 1)
-    else:
-        v_from = v_to = verses
-    return book, int(chapter), int(v_from), int(v_to)
 
 
 def fetch_votd() -> dict:
@@ -76,39 +43,6 @@ def fetch_votd() -> dict:
         "reference": details["reference"].upper(),
         "text": details["text"],
     }
-
-
-def fetch_passage(translation: str, reference: str) -> str:
-    # translation is "backend:id" — "bibleapi:kjv", "bolls:ESV", etc.
-    backend, tr_id = translation.split(":", 1)
-    if backend == "bibleapi":
-        return _fetch_bibleapi(tr_id, reference)
-    if backend == "bolls":
-        return _fetch_bolls(tr_id, reference)
-    raise ValueError(f"unknown translation backend: {backend}")
-
-
-def _fetch_bibleapi(tr_id: str, reference: str) -> str:
-    url = f"https://bible-api.com/{urllib.parse.quote(reference)}"
-    r = _session.get(url, params={"translation": tr_id}, timeout=10)
-    r.raise_for_status()
-    return r.json()["text"].strip()
-
-
-def _fetch_bolls(tr_id: str, reference: str) -> str:
-    book, chapter, v_from, v_to = _parse_reference(reference)
-    num = _BOOK_NUMS.get(book)
-    if num is None:
-        raise ValueError(f"no book number for {book!r}")
-    parts = []
-    for v in range(v_from, v_to + 1):
-        r = _session.get(
-            f"https://bolls.life/get-verse/{tr_id}/{num}/{chapter}/{v}/",
-            timeout=10,
-        )
-        r.raise_for_status()
-        parts.append(r.json()["text"].strip())
-    return " ".join(parts)
 
 
 def _natural_font(size: int) -> tuple:

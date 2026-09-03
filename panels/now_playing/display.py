@@ -43,12 +43,7 @@ VIZ_GAP_W   = 1
 VIZ_PADDING = 1
 VIZ_MIN_H   = 5
 
-FRAME_MS           = 100   # ms per GIF frame (10 fps)
-SCROLL_STATIC_MS   = 5000  # hold still before scrolling
-SCROLL_PAUSE_MS    = 1000  # pause at end before looping
-SCROLL_STATIC_FRAMES = SCROLL_STATIC_MS  // FRAME_MS   # 62
-SCROLL_PAUSE_FRAMES  = SCROLL_PAUSE_MS   // FRAME_MS   # 12
-TOTAL_FRAMES         = int(20_000 // FRAME_MS)          # 250 = 20s always
+FRAME_MS = 100   # ms per GIF frame (10 fps)
 
 _FONTS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts")
 
@@ -274,7 +269,7 @@ def _clean_text(text: str) -> str:
     return re.sub(r'\s*[\(\[].*?[\)\]]', '', text).strip()
 
 
-def _build_line_strip(text: str, color: tuple, font) -> tuple[Image.Image, int]:
+def _build_line_strip(text: str, color: tuple, font) -> Image.Image:
     text = _clean_text(text)
     probe = ImageDraw.Draw(Image.new("RGB", (4000, FONT_H)))
     while text and _tw(probe, text, font) > TEXT_W:
@@ -282,17 +277,7 @@ def _build_line_strip(text: str, color: tuple, font) -> tuple[Image.Image, int]:
     strip = Image.new("RGB", (TEXT_W, FONT_H), BG)
     if text:
         _put(ImageDraw.Draw(strip), 0, 0, text, font, color)
-    return strip, 0
-
-
-def _line_scroll_x(fi: int, overflow: int) -> int:
-    if overflow == 0:
-        return 0
-    if fi < SCROLL_STATIC_FRAMES:
-        return 0
-    if fi < SCROLL_STATIC_FRAMES + overflow:
-        return fi - SCROLL_STATIC_FRAMES
-    return overflow   # paused at end until full cycle resets
+    return strip
 
 
 def generate_gif(state: dict, quick: bool = False) -> bytes:
@@ -355,9 +340,7 @@ def generate_gif(state: dict, quick: bool = False) -> bytes:
         (_build_line_strip(state.get("artist") or "", accent1,  font), ARTIST_Y),
         (_build_line_strip(state.get("album")  or "", accent2,  font), ALBUM_Y),
     ]
-    max_overflow  = max(ov for (_, ov), _ in lines)
-    cycle_frames  = SCROLL_STATIC_FRAMES + max_overflow + SCROLL_PAUSE_FRAMES
-    total_frames  = frames_per_beat * (1 if quick else 2)
+    total_frames = frames_per_beat * (1 if quick else 2)
 
     frames = []
     for fi in range(total_frames):
@@ -368,13 +351,8 @@ def generate_gif(state: dict, quick: bool = False) -> bytes:
 
         frame = cover_base.copy()
 
-        fi_scroll = fi % max(cycle_frames, 1)
-        for (strip, overflow), y_pos in lines:
-            sx         = _line_scroll_x(fi_scroll, overflow)
-            crop_right = min(sx + TEXT_W, strip.width)
-            if crop_right > sx:
-                region = strip.crop((sx, 0, crop_right, FONT_H))
-                frame.paste(region, (TEXT_X, y_pos))
+        for strip, y_pos in lines:
+            frame.paste(strip, (TEXT_X, y_pos))
 
         draw = ImageDraw.Draw(frame)
         _draw_progress_bar(draw, elapsed_s, duration_s, accent1, accent2)
