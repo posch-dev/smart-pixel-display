@@ -16,6 +16,10 @@
 </button>
 
 <div id="pv-menu">
+  <button id="pv-freeze" class="pv-freeze" onclick="togglePvFreeze()">
+    <svg class="ico"><use id="pv-freeze-use" href="#ico-pause"/></svg>
+    <span id="pv-freeze-label">Pause</span>
+  </button>
   <div class="card-title">Preview<span class="pv-note">This page only</span></div>
   <div class="row">
     <div class="row-left"><div class="row-label">Show</div></div>
@@ -28,6 +32,11 @@
     </select></div>
   </div>
   <div class="row">
+    <div class="row-left"><div class="row-label">Export</div></div>
+    <div class="row-right"><button class="btn btn-ghost btn-sm pv-export" onclick="openExport()" title="Export"><svg class="ico" style="width:14px;height:14px"><use href="#ico-download"/></svg></button></div>
+  </div>
+  <div class="card-title">Appearance</div>
+  <div class="row">
     <div class="row-left"><div class="row-label">Theme</div></div>
     <div class="row-right"><div class="seg">
       <button onclick="setPvTheme('dark')" id="pv-theme-dark">Dark</button>
@@ -39,10 +48,10 @@
     <div class="row-right"><input type="color" id="pv-accent" oninput="setPvAccent(this.value)"></div>
   </div>
   <div class="row">
-    <div class="row-left"><div class="row-label">Export</div></div>
-    <div class="row-right"><button class="btn btn-ghost btn-sm pv-export" onclick="openExport()" title="Export"><svg class="ico" style="width:14px;height:14px"><use href="#ico-download"/></svg></button></div>
+    <div class="row-left"><div class="row-label">Grid</div></div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="pv-grid"
+      onchange="setPvGrid(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
   </div>
-  <div class="card-title">Appearance</div>
   <div id="pv-panels"></div>
 </div>
 

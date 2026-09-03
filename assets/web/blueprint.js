@@ -13,6 +13,13 @@ function getCookie(name) {
 }
 
 function rgbToHex([r,g,b]) { return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join(''); }
+
+// a css colour comes back as a hex or as rgb(), both have to answer with a hex
+function cssHex(raw) {
+  const m = String(raw).match(/rgba?\(([^)]+)\)/);
+  if (!m) return String(raw).trim();
+  return rgbToHex(m[1].split(/[,\s/]+/).filter(Boolean).slice(0, 3).map(Number));
+}
 function hexToRgb(hex) { return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)); }
 
 // the accent is drawn as text on both card colours, so it has to clear
@@ -212,7 +219,7 @@ function _bpClock(colors) {
   const month = now.toLocaleDateString('en-US', {month: 'long'});
   const day = now.getDate();
   // raised suffix needs markup, so this one line is built rather than set as text
-  const html = `${weekday}, ${month} ${day}<sup class="bp-ord">${_ordinalSuffix(day)}</sup>  ${now.getFullYear()}`;
+  const html = `${weekday}, ${month} ${day}<sup class="bp-ord">${_ordinalSuffix(day)}</sup> ${now.getFullYear()}`;
   const dateEl = document.getElementById('bp-date');
   if (dateEl && dateEl.innerHTML !== html) dateEl.innerHTML = html;
 }
@@ -290,16 +297,8 @@ function _bpNowPlaying(np) {
     }
   }
 
-  // the same three colours the matrix pulls out of the cover
-  const wrap = document.getElementById('bp-np');
-  if (wrap) {
-    const acc = _activePreview === 'pixel' && np && np.accents;
-    for (let i = 0; i < 3; i++) {
-      const name = '--np' + (i + 1);
-      if (acc && acc[i]) wrap.style.setProperty(name, `rgb(${acc[i].join(',')})`);
-      else wrap.style.removeProperty(name);
-    }
-  }
+  _npAccents = (np && np.accents) || null;
+  _applyNpAccents();
 
   _npDur     = (np && np.duration_s > 0) ? np.duration_s : NP_FALLBACK_DURATION_S;
   _npElapsed = (np && np.elapsed_s) || 0;
@@ -313,10 +312,53 @@ function _bpNowPlaying(np) {
 // head is carried between readings instead of stepping on each one
 let _npDur = NP_FALLBACK_DURATION_S, _npElapsed = 0, _npAt = 0, _npPlaying = false;
 
+// the three colours the matrix pulls out of the cover, and what a page pinned by hand
+let _npAccents = null;
+const _npAccentOverride = {};
+
+function setNpAccent(i, hex) {
+  if (hex) _npAccentOverride[i] = hex; else delete _npAccentOverride[i];
+  _applyNpAccents();
+}
+
+function _applyNpAccents() {
+  const wrap = document.getElementById('bp-np');
+  if (!wrap) return;
+  const pixel = _activePreview === 'pixel';
+  for (let i = 0; i < 3; i++) {
+    const name = '--np' + (i + 1);
+    const own = pixel && _npAccentOverride[i];
+    if (own) wrap.style.setProperty(name, own);
+    else if (pixel && _npAccents && _npAccents[i]) wrap.style.setProperty(name, `rgb(${_npAccents[i].join(',')})`);
+    else wrap.style.removeProperty(name);
+  }
+}
+
+// a frozen page is a real still: no reading is carried forward
+let _bpFrozen = false;
+
+function setBlueprintFrozen(on) {
+  _bpFrozen = on;
+  document.documentElement.dataset.frozen = on ? 'on' : '';
+  _paintPlayhead();
+}
+
+function blueprintPlayhead() {
+  return _npDur ? Math.min(1, _npElapsed / _npDur) : 0;
+}
+
+function setBlueprintPlayhead(frac) {
+  _npElapsed = _npDur * frac;
+  _npAt = performance.now();
+  _paintPlayhead();
+}
+
 function _paintPlayhead() {
   const bar = document.getElementById('bp-progress');
   if (!bar) return;
-  const run = _npPlaying ? _npElapsed + (performance.now() - _npAt) / 1000 : 0;
+  const run = !_npPlaying ? 0
+            : _bpFrozen ? _npElapsed
+            : _npElapsed + (performance.now() - _npAt) / 1000;
   const el = Math.min(run, _npDur);
   const pct = el / _npDur * 100;
   bar.style.width = pct + '%';
@@ -325,7 +367,7 @@ function _paintPlayhead() {
 }
 
 function _playheadLoop() {
-  if (document.getElementById('bp-progress')) _paintPlayhead();
+  if (!_bpFrozen && document.getElementById('bp-progress')) _paintPlayhead();
   requestAnimationFrame(_playheadLoop);
 }
 requestAnimationFrame(_playheadLoop);

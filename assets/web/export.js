@@ -192,13 +192,9 @@ function _exEsc(v) {
   return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// the variable may be authored as a hex or resolved to rgb, both have to answer
 function _exAccent() {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-  const m = raw.match(/rgba?\(([^)]+)\)/);
-  const rgb = m ? m[1].split(/[,\s/]+/).filter(Boolean).slice(0, 3).map(Number)
-                : hexToRgb(raw);
-  return {hex: rgbToHex(rgb).toUpperCase(), rgb};
+  const hex = cssHex(getComputedStyle(document.documentElement).getPropertyValue('--accent'));
+  return {hex: hex.toUpperCase(), rgb: hexToRgb(hex)};
 }
 
 function _exPanelRows(scene) {
@@ -414,7 +410,7 @@ async function exScene(mode, data) {
     const day = now.getDate();
     scene.date = `${now.toLocaleDateString('en-US', {weekday: 'long'})}, `
                + `${now.toLocaleDateString('en-US', {month: 'long'})} ${day}${_ordinalSuffix(day)}`
-               + `  ${now.getFullYear()}`;
+               + ` ${now.getFullYear()}`;
     scene.blink = (cfg.clock?.blink_interval ?? 1) * 2;
   } else if (mode === 'verse_of_day') {
     const v = data.verse || {};

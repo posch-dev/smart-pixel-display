@@ -248,6 +248,7 @@ header {
 .prev-row .seg { transition: opacity .2s; }
 .prev-row.global .seg { width: 0; opacity: 0; border-width: 0; }
 .prev-row.global .bright-div { opacity: 0; }
+.pv-auto { font-size: 11px; color: var(--muted); letter-spacing: .3px; }
 .bright-div { width: 1px; height: 18px; background: var(--border); flex-shrink: 0; transition: opacity .2s; }
 .bright-label { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 40px; text-align: right; }
 input[type=range] {
@@ -376,6 +377,9 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 }
 /* overlay against a near-white card leaves nothing visible */
 [data-theme="light"] .dot-raster { mix-blend-mode: normal; opacity: .55; }
+[data-raster="off"] .dot-raster { display: none; }
+/* a frozen page holds the picture, scroll and blink included */
+[data-frozen="on"] .blueprint, [data-frozen="on"] .blueprint * { animation-play-state: paused; }
 
 .seg {
   display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
@@ -469,6 +473,16 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   color: var(--muted); cursor: pointer;
 }
 #pv-burger:hover { color: var(--text); border-color: var(--accent); }
+.pv-freeze {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 11px 16px; border: none; border-bottom: 1px solid var(--border);
+  background: none; color: var(--text); font-size: 12px; font-weight: 600;
+  cursor: pointer; border-radius: 10px 10px 0 0;
+}
+.pv-freeze:hover { background: var(--input); }
+.pv-freeze.on { color: var(--accent); }
+.pv-freeze .ico { width: 15px; height: 15px; }
+
 #pv-menu {
   display: none; position: fixed; top: 56px; right: 14px; z-index: 2; width: 320px; max-width: calc(100vw / var(--zoom) - 28px);
   background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
@@ -514,7 +528,6 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 .bp-clock-wrap { transform: translateY(-1.12cqw); }
 .bp-clock-wrap .bp-date { font-size: 3.2cqw; margin-top: 1cqw; }
 .bp-ord { font-size: .62em; line-height: 0; vertical-align: super; }
-.bp-date { white-space: pre-wrap; }
 .bp-ico { width: 8cqw; height: 8cqw; color: var(--accent); }
 .bp-ref { color: var(--vs, var(--accent)); white-space: pre-wrap; }
 .bp-clamp {

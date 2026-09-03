@@ -197,9 +197,11 @@ function rRasterCell() {
 const R_RADIUS = R_W * 12 / R_RASTER_REF;
 
 function _rBackground(pal) {
-  const cell = rRasterCell();
-  return [still(rect(0, 0, R_W, R_H, pal.card, R_RADIUS)),
-          still({op: 'raster', cell, fill: pal.raster, opacity: 0.5, r: R_RADIUS})];
+  const ops = [still(rect(0, 0, R_W, R_H, pal.card, R_RADIUS))];
+  if (document.documentElement.dataset.raster !== 'off')
+    ops.push(still({op: 'raster', cell: rRasterCell(), fill: pal.raster,
+                    opacity: 0.5, r: R_RADIUS}));
+  return ops;
 }
 
 function _rClock(scene, t, pal, animate, decl) {
