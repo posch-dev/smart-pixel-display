@@ -2,7 +2,6 @@
 
 import asyncio
 import binascii
-import datetime
 import io
 import os
 import sys
@@ -12,10 +11,10 @@ import tempfile
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-import dns_patch          # patch DNS before any HTTP calls  # noqa: F401
 import poller
 import display
 import assets.system.config as config
+import assets.system.log as log
 import assets.system.webhooks as webhooks
 from pypixelcolor import AsyncClient
 from PIL import Image
@@ -39,10 +38,6 @@ def _black_hex() -> str:
 _BLACK_HEX = _black_hex()
 
 
-def _ts() -> str:
-    return datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-
-
 def _other(slot: int) -> int:
     return SLOT_B if slot == SLOT_A else SLOT_A
 
@@ -63,11 +58,11 @@ async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = Fal
                   ble_lock: asyncio.Lock | None = None) -> None:
     t0 = time.monotonic()
     label = " [quick]" if quick else ""
-    print(f"{_ts()} [main] rendering GIF{label}  elapsed={state['elapsed_s']:.0f}s ...")
+    log.info("nowplaying", f"rendering gif{label}  elapsed={state['elapsed_s']:.0f}s ...")
     loop = asyncio.get_running_loop()
     gif = await loop.run_in_executor(None, display.generate_gif, state, quick)
     t1 = time.monotonic()
-    print(f"{_ts()} [main] render done ({t1-t0:.1f}s, {len(gif)//1024}KB) — uploading to slot {slot} ...")
+    log.info("nowplaying", f"render done ({t1-t0:.1f}s, {len(gif)//1024}KB), uploading to slot {slot} ...")
     path = os.path.join(tempfile.gettempdir(), f"nowplaying_{slot}.gif")
     with open(path, "wb") as f:
         f.write(gif)
@@ -76,7 +71,7 @@ async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = Fal
             await client.send_image(path, save_slot=slot)
     else:
         await client.send_image(path, save_slot=slot)
-    print(f"{_ts()} [main] slot {slot} ready ({time.monotonic()-t1:.1f}s upload)")
+    log.info("nowplaying", f"slot {slot} ready ({time.monotonic()-t1:.1f}s upload)")
 
 
 async def _safe_delete(client: AsyncClient, slot: int, ble_lock: asyncio.Lock | None = None) -> None:
@@ -105,8 +100,10 @@ async def _cancel_task(t: asyncio.Task | None) -> None:
         t.cancel()
         try:
             await t
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:
+            log.error("nowplaying", f"task raised while cancelling: {e!r}")
 
 
 async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: int | None = None,
@@ -120,7 +117,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 await _send_black(client)
         else:
             await _send_black(client)
-        print(f"{_ts()} [main] black screen active")
+        log.info("nowplaying", "black screen active")
 
     _brightness_applied = False
     active_slot:      int | None          = None
@@ -169,7 +166,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 play_counts[raw_key] = cnt
                 last_counted = raw_key
                 if cnt > MAX_REPS:
-                    print(f"{_ts()} [main] '{raw_key[0]}' played {cnt}× — ignoring")
+                    log.info("nowplaying", f"'{raw_key[0]}' played {cnt} times, ignoring")
 
             song_key: tuple | None = (
                 raw_key if raw_key and play_counts.get(raw_key, 0) <= MAX_REPS else None
@@ -190,7 +187,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     continue
                 if next_song is not None and not state["playing"] and (
                         standby_task is not None and standby_task.done()):
-                    print(f"{_ts()} [main] current expired — promoting: {next_song[1]} — {next_song[0]}")
+                    log.info("nowplaying", f"current expired, promoting: {next_song[1]} - {next_song[0]}")
                     current_song          = next_song
                     chunk_elapsed_s       = 0.0
                     next_song             = None
@@ -204,7 +201,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     pass
 
                 elif current_song is not None:
-                    print(f"{_ts()} [main] nothing playing")
+                    log.info("nowplaying", "nothing playing")
                     await _cancel_task(standby_task)
                     standby_task = None
                     await _safe_delete(client, ble_lock=ble_lock, slot=SLOT_A)
@@ -234,7 +231,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
             if song_key is not None and song_key != current_song and song_key != next_song:
 
                 if in_last and current_song is not None:
-                    print(f"{_ts()} [main] last {LAST_10}s, upcoming: {state['artist']} — {state['title']}  waiting for cover...")
+                    log.info("nowplaying", f"last {LAST_10}s, upcoming: {state['artist']} - {state['title']}, waiting for cover ...")
                     ns = dict(state)
                     ns["elapsed_s"] = 0.0
                     next_song             = song_key
@@ -242,7 +239,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     next_cover_wait_since = now
 
                 else:
-                    print(f"{_ts()} [main] new song: {state['artist']} — {state['title']}  waiting for cover...")
+                    log.info("nowplaying", f"new song: {state['artist']} - {state['title']}, waiting for cover ...")
                     if standby_task and not standby_task.done():
                         standby_task.cancel()
                     standby_task          = None
@@ -266,9 +263,9 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 waited       = now - next_cover_wait_since
                 if ns_has_cover or waited >= COVER_WAIT:
                     if ns_has_cover:
-                        print(f"{_ts()} [main] upcoming cover arrived after {waited:.1f}s — queuing render")
+                        log.info("nowplaying", f"upcoming cover arrived after {waited:.1f}s, queuing render")
                     else:
-                        print(f"{_ts()} [main] no cover after {COVER_WAIT}s for upcoming song — queuing placeholder render")
+                        log.info("nowplaying", f"no cover after {COVER_WAIT}s for upcoming song, queuing placeholder render")
                     if standby_task and not standby_task.cancelled():
                         standby_task.cancel()
                     tgt = _other(active_slot) if active_slot else SLOT_A
@@ -284,9 +281,9 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 waited    = now - cover_wait_since
                 if has_cover or waited >= COVER_WAIT:
                     if has_cover:
-                        print(f"{_ts()} [main] cover arrived after {waited:.1f}s — rendering")
+                        log.info("nowplaying", f"cover arrived after {waited:.1f}s, rendering")
                     else:
-                        print(f"{_ts()} [main] no cover after {COVER_WAIT}s — rendering placeholder")
+                        log.info("nowplaying", f"no cover after {COVER_WAIT}s, rendering placeholder")
                     state = poller.get_state()
                     bpm = state.get("bpm")
                     current_chunk_s = _beat_chunk_s(bpm)
@@ -307,12 +304,12 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 if standby_task.cancelled() or standby_task.exception() is not None:
                     exc = standby_task.exception() if not standby_task.cancelled() else None
                     if exc is not None:
-                        print(f"{_ts()} [main] upload failed: {exc}")
+                        log.error("nowplaying", f"upload failed: {exc}")
                         raise exc
                     standby_task    = None
                     switch_on_ready = False
                 elif standby_song == current_song:
-                    print(f"{_ts()} [main] switching to slot {standby_slot}")
+                    log.info("nowplaying", f"switching to slot {standby_slot}")
                     if ble_lock:
                         async with ble_lock:
                             await client.show_slot(standby_slot)
@@ -374,7 +371,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 if bpm:
                     active_bpm = bpm
                     current_chunk_s = _beat_chunk_s(bpm)
-                print(f"{_ts()} [main] cover arrived — re-rendering")
+                log.info("nowplaying", "cover arrived, re-rendering")
 
             if (active_slot is not None
                     and current_song == song_key
@@ -386,7 +383,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 active_bpm = bpm
                 current_chunk_s = _beat_chunk_s(bpm)
                 metadata_arrived = True
-                print(f"{_ts()} [main] BPM arrived ({bpm}) — re-rendering")
+                log.info("nowplaying", f"bpm arrived ({bpm}), re-rendering")
 
             if metadata_arrived and standby_task is None:
                 ns = dict(state)
@@ -408,7 +405,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     ns = dict(state)
                     ns["elapsed_s"] = next_chunk_elapsed
                     tgt = _other(active_slot)
-                    print(f"{_ts()} [main] preparing chunk elapsed={next_chunk_elapsed:.0f}s → slot {tgt}")
+                    log.debug("nowplaying", f"preparing chunk elapsed={next_chunk_elapsed:.0f}s for slot {tgt}")
                     standby_slot    = tgt
                     standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
                     standby_elapsed = next_chunk_elapsed
@@ -420,7 +417,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                         and not standby_task.cancelled()
                         and standby_task.exception() is None
                         and standby_song == current_song):
-                    print(f"{_ts()} [main] chunk boundary → slot {standby_slot}")
+                    log.debug("nowplaying", f"chunk boundary, slot {standby_slot}")
                     if ble_lock:
                         async with ble_lock:
                             await client.show_slot(standby_slot)
@@ -456,12 +453,12 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
 
 async def main() -> None:
     poller.start()
-    print(f"{_ts()} [main] NowPlaying starting — connecting to {MAC}")
+    log.info("nowplaying", f"starting, connecting to {MAC}")
 
     while True:
         try:
             async with AsyncClient(MAC) as client:
-                print(f"{_ts()} [main] BLE connected")
+                log.info("nowplaying", "ble connected")
                 await client.set_brightness(80)
                 await run_loop(client)
         except KeyboardInterrupt:
@@ -470,7 +467,7 @@ async def main() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            print(f"{_ts()} [main] BLE error: {e} — reconnecting in 5s")
+            log.error("nowplaying", f"ble error: {e}, reconnecting in 5s")
             await asyncio.sleep(5)
 
 

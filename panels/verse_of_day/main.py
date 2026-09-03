@@ -31,7 +31,7 @@ _session = requests.Session()
 
 
 def fetch_votd() -> dict:
-    # OurManna — reference + text, no key. Reference uppercased for the panel.
+    # OurManna: reference + text, no key. Reference uppercased for the panel.
     r = _session.get(
         "https://beta.ourmanna.com/api/v1/get/",
         params={"format": "json", "order": "daily"},
@@ -167,7 +167,7 @@ async def run() -> None:
         frame = render_reference(votd["reference"], display_w, display_h)
 
         await client.set_brightness(BRIGHTNESS)
-        print("Displaying — press Ctrl+C to stop.")
+        print("Displaying, press Ctrl+C to stop.")
         while True:
             await client.send_image_hex(frame, ".png")
             await asyncio.sleep(REFRESH_INTERVAL)

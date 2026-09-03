@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import signal
 import io
 import os
 import sys
@@ -14,6 +15,8 @@ from PIL import Image, ImageDraw
 from pypixelcolor import AsyncClient
 
 import assets.system.config as config
+import assets.system.log as log
+from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.api as api
 import assets.system.webhooks as webhooks
@@ -58,9 +61,6 @@ def _ble_target():
         return BLEDevice(addr, None, details, -127)
 
 
-def _ts() -> str:
-    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
-
 def _active_hours():
     ah = config.get("device", "active_hours")
     return (int(ah[0]), int(ah[1])) if ah and len(ah) == 2 else None
@@ -75,8 +75,8 @@ async def _wait_for_active_hour() -> None:
         now = datetime.now()
         secs = ((ah[0] - now.hour) % 24) * 3600 - now.minute * 60 - now.second
         secs = max(secs, 60)
-        print(f"{_ts()} [hours] Outside active hours ({ah[0]}–{ah[1]}). "
-              f"Waiting {secs//3600}h {(secs%3600)//60}m ...")
+        log.info("hours", f"outside active hours ({ah[0]}-{ah[1]}), "
+                          f"waiting {secs//3600}h {(secs%3600)//60}m ...")
         await config.wait_for_change(timeout=min(secs, 60))
 
 _VERSE_CACHE_DIR  = os.path.join(os.path.dirname(__file__), "panels", "verse_of_day")
@@ -106,7 +106,7 @@ def _purge_old_verse_caches() -> None:
         if today not in f:
             try:
                 os.remove(f)
-                print(f"{_ts()} [verse] Removed old cache: {os.path.basename(f)}")
+                log.debug("verse", f"removed old cache: {os.path.basename(f)}")
             except OSError:
                 pass
 
@@ -122,7 +122,8 @@ def get_verse_frame() -> str | None:
         try:
             with open(cache_path, encoding="utf-8") as f:
                 cached = json.load(f)
-        except Exception:
+        except Exception as e:
+            log.warn("verse", f"cache read failed: {e}")
             cached = {}
     if cached.get("schema") != _VERSE_CACHE_SCHEMA:
         cached = {}
@@ -130,7 +131,7 @@ def get_verse_frame() -> str | None:
         reference = cached.get("reference")
         ourmanna_text = cached.get("text")
         if reference is None:
-            print(f"{_ts()} [verse] Fetching ...")
+            log.info("verse", "fetching ...")
             votd = fetch_votd()
             reference = votd["reference"]
             ourmanna_text = votd["text"]
@@ -148,9 +149,9 @@ def get_verse_frame() -> str | None:
         })
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(cached, f, ensure_ascii=False)
-        print(f"{_ts()} [verse] Rendered: {reference}")
+        log.info("verse", f"rendered: {reference}")
     except Exception as e:
-        print(f"{_ts()} [verse] Render failed: {e}")
+        log.error("verse", f"render failed: {e}")
         _verse_frame = _verse_cache_key = None
     return _verse_frame
 
@@ -261,12 +262,12 @@ async def _nowplaying_watcher() -> None:
             _not_playing_ticks = 0
             if not scheduler.is_triggered("nowplaying") and not scheduler.has_user_trigger():
                 scheduler.trigger("nowplaying", source="auto")
-                print(f"{_ts()} [watcher] music detected → NowPlaying")
+                log.info("watcher", "music detected, switching to nowplaying")
         elif scheduler.is_triggered("nowplaying") and not scheduler.has_user_trigger():
             _not_playing_ticks += 1
             if _not_playing_ticks >= _STOP_DEBOUNCE:
                 scheduler.untrigger("nowplaying")
-                print(f"{_ts()} [watcher] music stopped → clock")
+                log.info("watcher", "music stopped, switching to clock")
                 _not_playing_ticks = 0
         else:
             _not_playing_ticks = 0
@@ -314,14 +315,14 @@ async def _dashboard_event_watcher() -> None:
                 triggered_keys.add(ev_key)
                 if not scheduler.has_user_trigger():
                     scheduler.trigger("dashboard", source="auto")
-                    print(f"{_ts()} [event-watcher] dashboard triggered: "
-                          f"{ev.get('title', '?')} (departs {departure.strftime('%H:%M')})")
+                    log.info("events", f"dashboard triggered: {ev.get('title', '?')} "
+                                       f"(departs {departure.strftime('%H:%M')})")
                 break
 
         if not any_active and triggered_keys:
             scheduler.untrigger("dashboard")
             triggered_keys.clear()
-            print(f"{_ts()} [event-watcher] grace expired — dashboard untriggered")
+            log.info("events", "grace expired, dashboard untriggered")
 
         await asyncio.sleep(60)
 
@@ -336,14 +337,18 @@ async def _cancel(task: asyncio.Task | None, lock: asyncio.Lock | None = None) -
             task.cancel()
             try:
                 await task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                log.error("mode", f"panel task raised while cancelling: {e!r}")
         return
     task.cancel()
     try:
         await task
-    except (asyncio.CancelledError, Exception):
+    except asyncio.CancelledError:
         pass
+    except Exception as e:
+        log.error("mode", f"panel task raised while cancelling: {e!r}")
 
 async def run() -> None:
     config.init_event(asyncio.get_running_loop())
@@ -367,13 +372,13 @@ async def run() -> None:
     _boot_powered_off = config.get("device", "start_powered_off", False) and _active_hours() is None
     if _boot_powered_off:
         scheduler.set_display_on(False)
-        print(f"{_ts()} [power] Starting powered off — waiting for manual power on.")
+        log.info("power", "starting powered off, waiting for manual power on")
 
     while True:
         await _wait_for_active_hour()
 
         try:
-            print(f"{_ts()} Connecting to {MAC_ADDRESS} ...")
+            log.info("ble", f"connecting to {MAC_ADDRESS} ...")
             api.set_reconnect(attempting=True)
             async with AsyncClient(_ble_target()) as client:
                 api.set_connected(True)
@@ -394,26 +399,26 @@ async def run() -> None:
                 if need_clear:
                     async def clear_slots():
                         api.set_clearing(True)
-                        print(f"{_ts()} Clearing slots ...")
+                        log.info("ble", "clearing slots ...")
                         deadline = asyncio.get_running_loop().time() + 60
                         for slot in range(MAX_SLOTS):
                             if asyncio.get_running_loop().time() > deadline:
-                                print(f"{_ts()} Clearing timed out at slot {slot}, giving up.")
+                                log.warn("ble", f"clearing timed out at slot {slot}, giving up")
                                 break
                             try:
                                 async with ble_lock:
                                     await asyncio.wait_for(client.delete(slot), timeout=2.0)
                             except asyncio.TimeoutError:
-                                print(f"{_ts()} Slot {slot} delete timed out, skipping.")
+                                log.warn("ble", f"slot {slot} delete timed out, skipping")
                             except Exception as e:
-                                print(f"{_ts()} Slot {slot} delete error: {e}, skipping.")
+                                log.warn("ble", f"slot {slot} delete error: {e}, skipping")
                         clearing[0] = False
                         api.set_clearing(False)
-                        print(f"{_ts()} Slots cleared.")
+                        log.info("ble", "slots cleared")
                     _clear_task = asyncio.create_task(clear_slots())
                 else:
                     clearing[0] = False
-                    print(f"{_ts()} Quick reconnect, skipping slot clear.")
+                    log.info("ble", "quick reconnect, skipping slot clear")
 
                 _ever_connected = True
                 _disconnect_at = None
@@ -456,7 +461,7 @@ async def run() -> None:
                             # Outside active hours this off/on toggle is an override session ending/starting,
                             # so it gets the active_* triggers instead of the normal power_* ones.
                             asyncio.create_task(webhooks.fire_device("on_power_off" if _is_active_hour() else "on_active_end"))
-                        print(f"{_ts()} [power] Display off — black screen.")
+                        log.info("power", "display off, black screen")
                         _black_ts = time.time()
                         while not scheduler.get_display_on():
                             await asyncio.sleep(0.5)
@@ -466,7 +471,7 @@ async def run() -> None:
                                 _black_ts = time.time()
                         np_poller.resume()
                         asyncio.create_task(webhooks.fire_device("on_power_on" if _is_active_hour() else "on_active_start"))
-                        print(f"{_ts()} [power] Display on — resuming.")
+                        log.info("power", "display on, resuming")
                         continue
 
                     if _out_of_hours():
@@ -483,7 +488,7 @@ async def run() -> None:
                         # Silent, mirrors the manual power switch state for the UI without firing on_power_off (on_active_end already covers this transition).
                         scheduler.set_display_on(False)
                         asyncio.create_task(webhooks.fire_device("on_active_end"))
-                        print(f"{_ts()} [hours] Black screen — grace period (2min).")
+                        log.info("hours", "black screen, grace period (2min)")
                         _grace_start = time.time()
                         while _out_of_hours() and time.time() - _grace_start < 120:
                             await asyncio.sleep(10)
@@ -491,7 +496,7 @@ async def run() -> None:
                                 async with ble_lock:
                                     await asyncio.wait_for(client.send_image_hex(_BLACK, ".png"), timeout=BLE_SEND_TIMEOUT)
                         if _out_of_hours():
-                            print(f"{_ts()} [hours] Grace period done — sleeping.")
+                            log.info("hours", "grace period done, sleeping")
                             _black_ah_ts = time.time()
                             while _out_of_hours():
                                 await config.wait_for_change(timeout=3)
@@ -505,16 +510,16 @@ async def run() -> None:
                             scheduler.set_active_hours_override(False)
                             scheduler.cancel_sleep_timer()
                             asyncio.create_task(webhooks.fire_device("on_active_start"))
-                            print(f"{_ts()} [hours] Active hours resumed.")
+                            log.info("hours", "active hours resumed")
                         else:
                             asyncio.create_task(webhooks.fire_device("on_active_start"))
-                            print(f"{_ts()} [hours] Manually turned on outside active hours — resuming display.")
+                            log.info("hours", "manually turned on outside active hours, resuming display")
                         continue
 
                     mode = scheduler.get_active_mode()
                     if mode == "nowplaying" and clearing[0]:
                         if not _np_blocked_logged:
-                            print(f"{_ts()} [mode] nowplaying waiting for slot clear ...")
+                            log.debug("mode", "nowplaying waiting for slot clear ...")
                             _np_blocked_logged = True
                         await asyncio.sleep(0.5)
                         continue
@@ -538,7 +543,7 @@ async def run() -> None:
                         _last_mode = mode
                         last_brightness_sent = -1
                         brightness_asserts = 2
-                        print(f"{_ts()} [mode] → {mode}")
+                        log.info("mode", f"switching to {mode} ({scheduler.source_of(mode)})")
                         if mode != prev_mode:
                             async def _delayed_enter(m, ctx):
                                 await asyncio.sleep(0.5)
@@ -574,7 +579,7 @@ async def run() -> None:
                     await asyncio.sleep(0.5)
 
         except KeyboardInterrupt:
-            print("\nStopped.")
+            log.info("service", "stopped by keyboard interrupt")
             return
         except Exception as e:
             api.set_connected(False)
@@ -583,15 +588,25 @@ async def run() -> None:
                 _last_mode = None
             if _disconnect_at is None:
                 _disconnect_at = time.time()
-            print(f"{_ts()} Connection lost: {e}")
-            print(f"{_ts()} Retrying in {RECONNECT_DELAY}s ...")
+            log.error("ble", f"connection lost: {e}")
+            log.info("ble", f"retrying in {RECONNECT_DELAY}s ...")
             api.set_reconnect(at=time.time() + RECONNECT_DELAY)
             await asyncio.sleep(RECONNECT_DELAY)
 
 
+def _on_sigterm(signum, frame) -> None:
+    log.info("service", "sigterm received, shutting down")
+    sys.exit(0)
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", config.get("server", "port", 5000)))
+    if "--debug" in sys.argv or config.get("server", "debug_log", False):
+        log.set_debug(True)
+    signal.signal(signal.SIGTERM, _on_sigterm)
+    port   = int(os.environ.get("PORT", config.get("server", "port", 5000)))
+    panels = ", ".join(m for m in scheduler.MODES if config.get(m, "enabled", False)) or "none"
     api.bind_runtime(sys.modules[__name__])
     threading.Thread(target=api.run, kwargs={"port": port}, daemon=True).start()
-    print(f"Web UI: http://0.0.0.0:{port}")
+    log.info("service", f"smart pixel dashboard {VERSION} starting, panels: {panels}")
+    log.info("web", f"web ui on http://0.0.0.0:{port}")
     asyncio.run(run())

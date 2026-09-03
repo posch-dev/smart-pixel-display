@@ -129,6 +129,6 @@ def format_events() -> str:
                 else:
                     late = round((now - leave).total_seconds() / 60)
                     timing = f"LEAVE NOW! ({late} min late)"
-                lines.append(f"          — {timing}")
+                lines.append(f"          - {timing}")
 
     return "\n".join(lines)

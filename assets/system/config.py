@@ -5,6 +5,8 @@ import os
 import tomlkit
 from PIL import Image
 
+import assets.system.log as log
+
 _CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.toml")
 _doc: tomlkit.TOMLDocument | None = None
 _changed: asyncio.Event | None = None
@@ -62,14 +64,24 @@ def get_section(section: str) -> dict:
     return dict(doc.get(section, {}))
 
 
+def _short(value) -> str:
+    text = str(value)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
 def set(section: str, key: str, value) -> None:
     doc = _ensure()
     if section not in doc:
         doc[section] = tomlkit.table()
+    old = doc[section].get(key)
     if value is None:
         doc[section].pop(key, None)
     else:
         doc[section][key] = value
+    if old != value:
+        log.info("config", f"{section}.{key}: {_short(old)} -> {_short(value)}")
+    if section == "server" and key == "debug_log":
+        log.set_debug(bool(value))
     _save()
     notify_changed()
 

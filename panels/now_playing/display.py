@@ -5,8 +5,12 @@ import io
 import os
 import random
 import re
+import sys
 import requests
 from math import exp
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+import assets.system.log as log
 
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageOps
 
@@ -67,7 +71,7 @@ def set_font(n: int) -> None:
     _FONT_CHOICE = n
     _FONT_PATH   = os.path.join(_FONTS_DIR, FONTS[n][1])
     _font_cache.clear()
-    print(f"[font] {n} — {FONTS[n][0]}")
+    log.info("font", f"{n}: {FONTS[n][0]}")
 
 
 def _load(target_h: int) -> ImageFont.FreeTypeFont:
@@ -206,7 +210,8 @@ def _accent_colors(cover_bytes: bytes) -> tuple[tuple, tuple, tuple]:
             b, c = c, b
         return a, b, c
 
-    except Exception:
+    except Exception as e:
+        log.debug("cover", f"palette failed, using the fallback: {e}")
         return (80, 80, 255), (200, 80, 200), (255, 180, 50)
 
 
@@ -323,8 +328,8 @@ def generate_gif(state: dict, quick: bool = False) -> bytes:
                 cover_img = ImageEnhance.Color(cover_img).enhance(2.0)
                 cover_img = ImageEnhance.Contrast(cover_img).enhance(1.5)
             cover_base.paste(cover_img, (0, 0))
-        except Exception:
-            pass
+        except Exception as e:
+            log.warn("cover", f"cover processing failed: {e}")
     else:
         ph_draw = ImageDraw.Draw(cover_base)
         note_font = _load(16)
@@ -420,4 +425,4 @@ if __name__ == "__main__":
         f.write(gif_bytes)
     from PIL import ImageSequence
     n = sum(1 for _ in ImageSequence.Iterator(Image.open(out)))
-    print(f"Saved {len(gif_bytes):,} bytes → {out}  ({len(gif_bytes)//1024} KB, {n} frames, {n * FRAME_MS / 1000:.1f}s)")
+    print(f"Saved {len(gif_bytes):,} bytes to {out}  ({len(gif_bytes)//1024} KB, {n} frames, {n * FRAME_MS / 1000:.1f}s)")

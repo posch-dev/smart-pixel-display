@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import weather as weather_mod
 import calendar_store
 import assets.system.config as config
+import assets.system.log as log
 
 MAC              = config.get("device", "mac_address")
 BRIGHTNESS       = config.get("device", "brightness", 50)
@@ -37,8 +38,8 @@ def _load_weather_cache() -> dict | None:
             saved = json.load(f)
         if time.time() - saved["fetched_at"] < WEATHER_REFRESH:
             return saved["data"]
-    except Exception:
-        pass
+    except Exception as e:
+        log.warn("weather", f"cache read failed: {e}")
     return None
 
 
@@ -49,7 +50,7 @@ def _save_weather_cache(data: dict) -> None:
         with open(_WEATHER_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump({"fetched_at": time.time(), "data": data}, f)
     except Exception as e:
-        print(f"[weather] cache write failed: {e}")
+        log.warn("weather", f"cache write failed: {e}")
 
 
 async def _weather_fetcher() -> None:
@@ -57,15 +58,15 @@ async def _weather_fetcher() -> None:
     cached = _load_weather_cache()
     if cached:
         _weather = cached
-        print(f"[weather] cache hit: {cached['temp_now']}° {cached['condition']}")
+        log.debug("weather", f"cache hit: {cached['temp_now']}° {cached['condition']}")
     while True:
         try:
             data = await asyncio.to_thread(weather_mod.fetch_weather)
             _weather = data
             _save_weather_cache(data)
-            print(f"[weather] {data['temp_now']}° {data['condition']}")
+            log.info("weather", f"{data['temp_now']}° {data['condition']}")
         except Exception as e:
-            print(f"[weather] fetch failed: {e}")
+            log.warn("weather", f"fetch failed: {e}")
         await asyncio.sleep(WEATHER_REFRESH)
 
 
@@ -74,7 +75,7 @@ def stop_weather() -> None:
     if _weather_task and not _weather_task.done():
         _weather_task.cancel()
         _weather_task = None
-        print("[weather] stopped")
+        log.info("weather", "stopped")
 
 W, H     = 128, 32
 LOCAL_TZ = ZoneInfo("Europe/Vienna")
@@ -222,7 +223,7 @@ def _load_icon(condition: str) -> Image.Image | None:
         try:
             icon = Image.open(path).convert("RGBA")
         except Exception as e:
-            print(f"[icon] failed to load {path}: {e}")
+            log.warn("asset", f"icon failed to load {path}: {e}")
     _icon_cache[condition] = icon
     return icon
 
@@ -269,7 +270,7 @@ def _load_logo(filename: str) -> Image.Image | None:
     try:
         img = Image.open(path).convert("RGBA")
     except Exception as e:
-        print(f"[logo] failed to load {path}: {e}")
+        log.warn("asset", f"logo failed to load {path}: {e}")
         img = None
     _logo_cache[filename] = img
     return img
@@ -357,7 +358,7 @@ def _today_event_info(now: datetime, events: list | None = None):
         return False, None, None, None, None, None, None
 
     except Exception as e:
-        print(f"[calendar] _today_event_info error: {e!r}")
+        log.error("calendar", f"_today_event_info error: {e!r}")
         return False, None, None, None, None, None, None
 
 
@@ -681,7 +682,7 @@ async def run() -> None:
     frame_count = 0
 
     if test_mode:
-        print(f"[display] test mode — cycling weather + {len(_TEST_CAL_CASES)} cal cases")
+        print(f"[display] test mode, cycling weather + {len(_TEST_CAL_CASES)} cal cases")
 
     if _weather_task is None or _weather_task.done():
         _weather_task = asyncio.create_task(_weather_fetcher())
@@ -721,7 +722,7 @@ async def run() -> None:
             print("\n[display] Stopped.")
             return
         except Exception as e:
-            print(f"[display] Connection lost: {e!r} — retrying in {RECONNECT_S}s")
+            print(f"[display] Connection lost: {e!r}, retrying in {RECONNECT_S}s")
             await asyncio.sleep(RECONNECT_S)
 
 

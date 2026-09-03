@@ -17,7 +17,6 @@ let statusData = {};
 let _displayOn = true;
 
 const manuals  = new Set();
-const timeds   = {};
 
 const HOLD_THRESHOLD_MS = 350;
 let _pressMode  = null;
@@ -323,14 +322,6 @@ function nxt(el, fmt) {
   const val = el.parentElement.querySelector('.val');
   if (val) val.textContent = fmt(el.value);
 }
-function fmtDur(s) {
-  if (s <= 0) return '0s';
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
-  if (h) return `${h}h ${m}m`;
-  if (m) return `${m}m ${sec}s`;
-  return sec + 's';
-}
-function fmtMs(ms) { return fmtDur(Math.max(0, Math.round((ms - Date.now()) / 1000))); }
 function fmtUptime(s) {
   s = Math.max(0, Math.round(s));
   const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600);
@@ -468,12 +459,8 @@ async function save(section, key, value) {
   } catch(e) { toast('Error: ' + e.message, 'err'); }
 }
 
-async function apiTrigger(mode, expiresAtMs) {
-  await fetch(`/mode/trigger/${mode}`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(expiresAtMs ? {expires_at: expiresAtMs / 1000} : {})
-  });
+async function apiTrigger(mode) {
+  await fetch(`/mode/trigger/${mode}`, {method: 'POST'});
 }
 async function apiUntrigger(mode) { await fetch(`/mode/${mode}`, {method:'DELETE'}); }
 
@@ -482,18 +469,17 @@ async function setManual(mode, on) {
     for (const m of [...manuals]) {
       if (m !== mode) {
         manuals.delete(m);
-        if (!timeds[m]) await apiUntrigger(m);
+        await apiUntrigger(m);
         syncTriggerControls(m);
       }
     }
-    if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
     if (mode !== 'nowplaying') await apiUntrigger('nowplaying');
     manuals.add(mode);
     await apiTrigger(mode);
     toast('Manual: ' + LABELS[mode]);
   } else {
     manuals.delete(mode);
-    if (!timeds[mode]) await apiUntrigger(mode);
+    await apiUntrigger(mode);
     toast('Released: ' + LABELS[mode]);
   }
   syncTriggerControls(mode);
@@ -512,7 +498,7 @@ function updateModeBtn(auto) {
 
 // from the header the override latches whatever is on screen right now
 async function toggleAutoMode() {
-  const auto = manuals.size === 0 && Object.keys(timeds).length === 0;
+  const auto = manuals.size === 0;
   if (!auto) return resetAll();
   const mode = statusData.active_mode;
   if (mode) await setManual(mode, true);
@@ -521,7 +507,6 @@ async function toggleAutoMode() {
 async function resetAll() {
   for (const mode of MODES) {
     manuals.delete(mode);
-    if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
     syncTriggerControls(mode);
   }
   await fetch('/mode/reset', {method: 'POST'});
@@ -543,7 +528,7 @@ function buildPanelGrid() {
     tile.className = 'pgrid-tile';
     tile.dataset.mode = mode;
     tile.innerHTML = `<svg class="ico"><use href="${TRIG_ICONS[mode]}"/></svg>` +
-      `<span class="pgrid-label">${LABELS[mode]}<span class="pgrid-count"></span></span>`;
+      `<span class="pgrid-label">${LABELS[mode]}</span>`;
     tile.addEventListener('pointerdown', e => pressStart(mode, tile, e));
     tile.addEventListener('pointerup', () => pressEnd(mode, tile));
     tile.addEventListener('pointerleave', () => pressCancel(tile));
@@ -656,13 +641,13 @@ function syncPulse(el, on) {
 
 // a live hold drives the panel just as much as a latched trigger does
 function _userDriving(mode) {
-  return manuals.has(mode) || !!timeds[mode] || _pressMode === mode || _segHolding === mode;
+  return manuals.has(mode) || _pressMode === mode || _segHolding === mode;
 }
 
 function updateTriggerUI() {
   const active = statusData.active_mode;
-  // nothing latched and nothing counting down means the scheduler is driving
-  const auto = manuals.size === 0 && Object.keys(timeds).length === 0;
+  // nothing latched means the scheduler is driving
+  const auto = manuals.size === 0;
   updateModeBtn(auto);
   document.querySelectorAll('.trig-seg').forEach(seg => {
     const always = seg.querySelector('.trig-seg-always');
@@ -672,10 +657,6 @@ function updateTriggerUI() {
     const m = tile.dataset.mode;
     syncPulse(tile, tile.classList.toggle('active', m === active && !_userDriving(m)));
     tile.classList.toggle('held', manuals.has(m));
-    tile.classList.toggle('timed', !!timeds[m]);
-    const count = tile.querySelector('.pgrid-count');
-    // a timed trigger can still arrive from a shortcut even though the ui cannot set one
-    if (count) count.textContent = timeds[m] ? fmtMs(timeds[m].expiresAt) : '';
   });
   updatePanelIcons(active);
 }
@@ -787,44 +768,21 @@ function populate() {
 function _reconcileTriggerState() {
   const triggered = new Set(statusData.triggered || []);
   const sources   = statusData.trigger_sources || {};
-  const expiries  = statusData.trigger_expires || {};
 
   MODES.forEach(mode => {
     // A "Hold to Trigger" press is a brief, local-only interaction, don't let a status poll landing mid-press reclassify it as a manual lock.
     if (mode === _pressMode || mode === _segHolding) return;
 
     const isUserTriggered = triggered.has(mode) && sources[mode] === 'user';
-    const serverExpiresAt = expiries[mode] != null ? expiries[mode] * 1000 : null;
 
     if (!isUserTriggered) {
       manuals.delete(mode);
-      if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
       syncTriggerControls(mode);
       return;
     }
 
-    if (serverExpiresAt) {
-      manuals.delete(mode);
-      if (!timeds[mode] || Math.abs(timeds[mode].expiresAt - serverExpiresAt) > 500) {
-        if (timeds[mode]) clearInterval(timeds[mode].intervalId);
-        const intervalId = setInterval(async () => {
-          if (Date.now() >= serverExpiresAt) {
-            clearInterval(timeds[mode]?.intervalId);
-            delete timeds[mode];
-            if (!manuals.has(mode)) await apiUntrigger(mode);
-            syncTriggerControls(mode);
-            updateTriggerUI(); loadStatus();
-          } else {
-            updateTriggerUI();
-          }
-        }, 1000);
-        timeds[mode] = {expiresAt: serverExpiresAt, intervalId};
-      }
-    } else {
-      // Indefinite user trigger with no local record (like after a page reload). Recover it as a manual lock instead of leaving it stuck untracked in the UI while the server keeps it triggered forever.
-      if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
-      manuals.add(mode);
-    }
+    // Indefinite user trigger with no local record (like after a page reload). Recover it as a manual lock instead of leaving it stuck untracked in the UI while the server keeps it triggered forever.
+    manuals.add(mode);
     syncTriggerControls(mode);
   });
 }

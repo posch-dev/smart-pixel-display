@@ -4,6 +4,7 @@ import json
 import re
 import aiohttp
 import assets.system.config as config
+import assets.system.log as log
 
 _TIMEOUT = aiohttp.ClientTimeout(total=8)
 _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
@@ -94,14 +95,14 @@ async def _fire_one(hook: dict, ctx: dict) -> None:
     for attempt in range(_MAX_RETRIES + 1):
         try:
             async with session.request(method, url, **kwargs) as resp:
-                print(f"[webhook] {method} {url} -> {resp.status}")
+                log.info("webhook", f"{method} {url} -> {resp.status}")
                 return
         except Exception as e:
             if attempt < _MAX_RETRIES:
-                print(f"[webhook] {method} {url} failed: {e} — retry {attempt + 1}/{_MAX_RETRIES}")
+                log.warn("webhook", f"{method} {url} failed: {e}, retry {attempt + 1}/{_MAX_RETRIES}")
                 await asyncio.sleep(_RETRY_DELAY)
             else:
-                print(f"[webhook] {method} {url} failed: {e} — giving up")
+                log.error("webhook", f"{method} {url} failed: {e}, giving up")
 
 
 async def fire(section: str, trigger: str, ctx_extra: dict | None = None) -> None:

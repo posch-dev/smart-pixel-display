@@ -13,6 +13,7 @@ sys.path.insert(0, _root)
 sys.path.insert(0, os.path.join(_root, "panels", "dashboard"))
 
 import assets.system.config as config
+import assets.system.log as log
 from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.webhooks as webhooks
@@ -181,6 +182,9 @@ def set_display_power():
     if override and config.get("device", "after_hours_sleep_timer_enabled", False):
         minutes = config.get("device", "after_hours_sleep_timer_minutes", 30)
         _schedule_after_hours_sleep_timer(minutes)
+        log.info("api", f"sleep timer armed for {minutes} min")
+    log.info("api", f"display {'on' if on else 'off'}"
+                    f"{', after hours override' if override else ''}")
     return jsonify({"ok": True, "display_on": scheduler.get_display_on()}), 200
 
 
@@ -193,8 +197,8 @@ def get_mode():
 def trigger_mode(mode):
     if mode not in scheduler.MODES:
         return jsonify({"error": f"unknown mode: {mode}"}), 400
-    body = request.get_json(silent=True) or {}
-    scheduler.trigger(mode, expires_at=body.get("expires_at"))
+    scheduler.trigger(mode)
+    log.info("api", f"{mode} triggered by hand")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 
@@ -203,6 +207,7 @@ def untrigger_mode(mode):
     if mode not in scheduler.MODES:
         return jsonify({"error": f"unknown mode: {mode}"}), 400
     scheduler.untrigger(mode)
+    log.info("api", f"{mode} released")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 
@@ -210,6 +215,7 @@ def untrigger_mode(mode):
 def reset_scheduler():
     for m in scheduler.MODES:
         scheduler.untrigger(m)
+    log.info("api", "all triggers reset, scheduler takes over")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 
@@ -218,12 +224,13 @@ def receive_calendar():
     data = request.get_json(silent=True)
     if isinstance(data, dict) and data:
         calendar_store.append_event(data)
-        print(f"[calendar] +1 event: {data.get('title', '?')!r}")
+        log.info("calendar", f"+1 event: {data.get('title', '?')!r}")
+        log.debug("calendar", f"payload: {data}")
     else:
-        print(f"[calendar] push received (no event data)")
+        log.warn("calendar", "push received without event data")
     if config.get("dashboard", "auto_trigger_on_calendar", True):
         scheduler.trigger("dashboard", source="auto")
-        print(f"[calendar] dashboard triggered")
+        log.info("calendar", "dashboard triggered")
     return jsonify({"ok": True}), 200
 
 
@@ -236,7 +243,7 @@ def dump_calendar():
 def clear_calendar():
     calendar_store.clear_events()
     scheduler.untrigger("dashboard")
-    print("[calendar] cleared — dashboard untriggered")
+    log.info("calendar", "cleared, dashboard untriggered")
     return jsonify({"ok": True}), 200
 
 
@@ -293,6 +300,7 @@ def dashboard_layouts():
 @app.post("/dashboard/trigger")
 def trigger_dashboard():
     scheduler.trigger("dashboard")
+    log.info("api", "dashboard triggered by hand")
     return jsonify({"ok": True, "active_mode": scheduler.get_active_mode()}), 200
 
 

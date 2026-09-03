@@ -3,7 +3,6 @@
 import os
 import sys
 import time
-import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import requests
@@ -15,14 +14,12 @@ sys.path.insert(0, _root)
 load_dotenv(dotenv_path=os.path.join(_root, ".env"))
 
 import assets.system.config as config
+import assets.system.log as log
 from genre_presets import get_preset
 from bpm_cache import get_track_data
 
 _POLL_LIMIT = {"lastfm": 0.25, "librefm": 1.0}  # minimum seconds between scrobbler polls
 _POLL_DEFAULT = {"lastfm": 0.5, "librefm": 2.0}  # default poll interval per scrobbler
-
-def _ts() -> str:
-    return datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
 
 _current_scrobbler: str | None = None
 _network: pylast._Network | None = None
@@ -44,14 +41,14 @@ def _ensure_network() -> None:
             password_hash = pylast.md5(os.getenv("LIBREFM_PASSWORD") or ""),
         )
         _user = _network.get_user(os.getenv("LIBREFM_USERNAME"))
-        print(f"{_ts()} [poller] switched to Libre.fm ({os.getenv('LIBREFM_USERNAME')})")
+        log.info("poller", f"switched to libre.fm ({os.getenv('LIBREFM_USERNAME')})")
     else:
         _network = pylast.LastFMNetwork(
             api_key    = os.getenv("LASTFM_API_KEY"),
             api_secret = os.getenv("LASTFM_SECRET"),
         )
         _user = _network.get_user(os.getenv("LASTFM_USERNAME"))
-        print(f"{_ts()} [poller] switched to Last.fm ({os.getenv('LASTFM_USERNAME')})")
+        log.info("poller", f"switched to last.fm ({os.getenv('LASTFM_USERNAME')})")
 
 
 PANEL_COVER_SIZE = 32
@@ -79,7 +76,7 @@ def _fetch_cover(title: str, artist: str) -> tuple[bytes | None, str | None]:
         panel = _download(art.replace("100x100bb", f"{PANEL_COVER_SIZE}x{PANEL_COVER_SIZE}bb"))
         return panel, art
     except Exception as e:
-        print(f"[cover] {e}")
+        log.warn("cover", f"{e}")
         return None, None
 
 
@@ -105,12 +102,12 @@ _running.set()
 
 def pause() -> None:
     _running.clear()
-    print(f"{_ts()} [poller] paused")
+    log.info("poller", "paused")
 
 
 def resume() -> None:
     _running.set()
-    print(f"{_ts()} [poller] resumed")
+    log.info("poller", "resumed")
 
 
 def get_state() -> dict:
@@ -135,7 +132,7 @@ def _poll_loop() -> None:
             try:
                 track = _np_call_pool.submit(_user.get_now_playing).result(timeout=15)
             except FuturesTimeoutError:
-                print(f"{_ts()} [poller] get_now_playing() timed out after 15s")
+                log.warn("poller", "get_now_playing() timed out after 15s")
                 track = None
 
             if track is None:
@@ -161,14 +158,14 @@ def _poll_loop() -> None:
                         _state["playing"] = False
                         current_title = None
                         _song_start   = 0.0
-                        print(f"{_ts()} [poller] song expired by duration")
+                        log.debug("poller", "song expired by duration")
                         time.sleep(1)
                         continue
 
                 if title != current_title:
                     current_title = title
                     _song_start   = time.monotonic()
-                    print(f"{_ts()} [poller] new song: {artist} — {title}")
+                    log.info("poller", f"new song: {artist} - {title}")
 
                     with _lock:
                         _state.update({
@@ -192,36 +189,40 @@ def _poll_loop() -> None:
                             try:
                                 ms = _track.get_duration()
                                 return ms / 1000 if ms else None
-                            except Exception:
+                            except Exception as e:
+                                log.debug("poller", f"duration lookup failed: {e}")
                                 return None
 
                         def _get_track_tags():
                             try:
                                 return [x.item.name for x in _track.get_top_tags(limit=10)]
-                            except Exception:
+                            except Exception as e:
+                                log.debug("poller", f"track tags lookup failed: {e}")
                                 return []
 
                         def _get_artist_tags():
                             try:
                                 return [x.item.name for x in _network.get_artist(_artist).get_top_tags(limit=10)]
-                            except Exception:
+                            except Exception as e:
+                                log.debug("poller", f"artist tags lookup failed: {e}")
                                 return []
 
                         def _get_album():
                             try:
                                 obj = _track.get_album()
                                 return obj.title if obj else None
-                            except Exception:
+                            except Exception as e:
+                                log.debug("poller", f"album lookup failed: {e}")
                                 return None
 
                         def _safe_result(fut, default, label):
                             try:
                                 return fut.result(timeout=20)
                             except FuturesTimeoutError:
-                                print(f"{_ts()} [poller] {label} fetch timed out after 20s")
+                                log.warn("poller", f"{label} fetch timed out after 20s")
                                 return default
                             except Exception as e:
-                                print(f"{_ts()} [poller] {label} fetch failed: {e}")
+                                log.warn("poller", f"{label} fetch failed: {e}")
                                 return default
 
                         pool = ThreadPoolExecutor(max_workers=5)
@@ -257,8 +258,8 @@ def _poll_loop() -> None:
 
                         cover_str  = "yes" if cover else "no"
                         preset_str = f"bass={preset['bass_mult']} mids={preset['mids_mult']} highs={preset['highs_mult']}"
-                        print(f"{_ts()} [poller] duration={duration_s}s cover={cover_str} preset={preset_str}")
-                        print(f"{_ts()} [poller] tags: {', '.join(lastfm_tags[:5])}")
+                        log.debug("poller", f"duration={duration_s}s cover={cover_str} preset={preset_str}")
+                        log.debug("poller", f"tags: {', '.join(lastfm_tags[:5])}")
 
                         track_data = get_track_data(_title, _artist, genres=lastfm_tags)
                         bpm          = track_data.get("bpm")
@@ -271,7 +272,7 @@ def _poll_loop() -> None:
                                     "danceability": danceability,
                                     "acousticness": acousticness,
                                 })
-                        print(f"{_ts()} [bpm] {_title}: {bpm} BPM")
+                        log.info("bpm", f"{_title}: {bpm} bpm")
 
                     threading.Thread(target=_fetch_metadata, daemon=True).start()
 
@@ -280,7 +281,7 @@ def _poll_loop() -> None:
                         _state["playing"] = True
 
         except Exception as e:
-            print(f"{_ts()} [poller error] {e}")
+            log.error("poller", f"{e}")
 
         configured = config.get("nowplaying", "poll_s")
         limit = _POLL_LIMIT.get(_current_scrobbler or "lastfm", 1.0)
@@ -301,12 +302,12 @@ def start() -> None:
 
 
 if __name__ == "__main__":
-    print("Starting poller — play something on Apple Music...\n")
+    print("Starting poller, play something on Apple Music ...\n")
     start()
     while True:
         s = get_state()
         if s["playing"]:
-            print(f"[state] {s['artist']} — {s['title']} | "
+            print(f"[state] {s['artist']} - {s['title']} | "
                   f"BPM={s['bpm']} | elapsed={s['elapsed_s']:.0f}s / {s['duration_s']}s")
         else:
             print("[state] nothing playing")

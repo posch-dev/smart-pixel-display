@@ -22,7 +22,6 @@ def _fallback_mode() -> str:
 
 _triggered: dict[str, float] = {}
 _trigger_source: dict[str, str] = {}
-_trigger_expires: dict[str, float] = {}  # mode -> epoch seconds, only for timed triggers
 _active_mode: str = MODES[0]
 _active_since: float = time.time()
 _verse_last_window: int = -1  # h*100+window_index, so we roll only once per window entry
@@ -67,6 +66,10 @@ def cancel_sleep_timer() -> None:
     _sleep_timer_task = None
 
 
+def source_of(mode: str) -> str:
+    return _trigger_source.get(mode, "-")
+
+
 def has_user_trigger() -> bool:
     return any(_trigger_source.get(m) == "user" for m in _triggered)
 
@@ -78,21 +81,16 @@ def get_status() -> dict:
         "active_for_s":    round(time.time() - _active_since, 1),
         "triggered":       list(_triggered.keys()),
         "trigger_sources": dict(_trigger_source),
-        "trigger_expires": dict(_trigger_expires),
         "display_on":      _display_on,
         "active_hours_override": _active_hours_override,
     }
 
 
-def trigger(mode: str, source: str = "user", expires_at: float | None = None) -> None:
+def trigger(mode: str, source: str = "user") -> None:
     if mode == _fallback_mode() and source != "user":
         source = "auto"
     _triggered[mode] = time.time()
     _trigger_source[mode] = source
-    if expires_at is not None:
-        _trigger_expires[mode] = expires_at
-    else:
-        _trigger_expires.pop(mode, None)
     _evaluate()
 
 
@@ -101,7 +99,6 @@ def is_triggered(mode: str) -> bool:
 
 
 def untrigger(mode: str) -> None:
-    _trigger_expires.pop(mode, None)
     if mode == _fallback_mode():
         _trigger_source[mode] = "auto"
         _evaluate()
@@ -146,11 +143,6 @@ def _evaluate() -> None:
 
 def tick() -> None:
     global _verse_last_window
-
-    now = time.time()
-    for m, exp in list(_trigger_expires.items()):
-        if now >= exp:
-            untrigger(m)
 
     min_dur = config.get(_active_mode, "min_duration_s", 0)
     if min_dur > 0 and (time.time() - _active_since) >= min_dur:

@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+import assets.system.log as log
+
 _DB_PATH        = os.path.join(os.path.dirname(__file__), "bpm_cache.db")
 _GETSONGBPM_KEY = os.getenv("GETSONGBPM_API_KEY")
 
@@ -85,7 +87,7 @@ def _getsongbpm_lookup(title: str, artist: str) -> dict | None:
             "acousticness": int(item["acousticness"]) if item.get("acousticness") else None,
         }
     except Exception as e:
-        print(f"[bpm] getsongbpm error: {e}")
+        log.warn("bpm", f"getsongbpm error: {e}")
         return None
 
 
