@@ -4,91 +4,120 @@
 
 Clock, live weather, and upcoming calendar events with travel-time warnings on one screen.
 
-## Priority
+<img src="../../.github/assets/dashboard_preview.gif" alt="Preview" width="512">
 
-Default priority: **4** (highest). When an event is pushed to the dashboard, it takes over from everything else. Now Playing (priority 3) and lower-priority panels yield to it. Priority is set in `config.toml`.
+# Legend
 
-## Display modes
-
-### Mode 1: Clock and weather only (no events)
-
-Everything is laid out as one centered block. Clock digits sit on the left, then the large temperature number with a degree symbol at its top-right corner, then the weather condition icon floating above the high/low column, with high and low stacked to the right. Temperature colors shift when values drop below freezing: current temp goes from yellow to light blue, high from green to deep blue, low from red to purple.
-
-Metric (°C):
-
-| Clear | Rain | Snow | Storm |
-|---|---|---|---|
-| ![sunny](../../.github/assets/dashboard_weather_sunny.png) | ![rain](../../.github/assets/dashboard_weather_rain.png) | ![snow](../../.github/assets/dashboard_weather_snow.png) | ![storm](../../.github/assets/dashboard_weather_storm.png) |
-
-| Fog | Overcast | Partly Cloudy |
-|---|---|---|
-| ![fog](../../.github/assets/dashboard_weather_fog.png) | ![cloudy](../../.github/assets/dashboard_weather_cloudy.png) | ![partly](../../.github/assets/dashboard_weather_partly.png) |
-
-Temperature color variations (metric):
-
-| +temp, low below 0 | -temp, high above 0 | -temp, all negative |
-|---|---|---|
-| ![low neg](../../.github/assets/dashboard_weather_low_neg.png) | ![below zero](../../.github/assets/dashboard_weather_below_zero.png) | ![all neg](../../.github/assets/dashboard_weather_all_neg.png) |
-
-Imperial (°F):
-
-| Clear | Snow (below freezing, shifts to blue) |
+| Element | What it shows |
 |---|---|
-| ![sunny_f](../../.github/assets/dashboard_weather_sunny_f.png) | ![snow_f](../../.github/assets/dashboard_weather_snow_f.png) |
+| <!-- png --> | blue numbers, the current time |
+| <!-- png --> | yellow number, the temperature right now |
+| <!-- png --> | green number, today's high |
+| <!-- png --> | red number, today's low |
+| <!-- png --> | weather icon, what the sky is doing right now, cloudy, overcast, rain and so on |
+| <!-- png --> | calendar icon with today's month and day rendered into it |
+| <!-- png --> | turquoise text, the timespan of the event |
+| <!-- png --> | grey text, the name of the event |
+| <!-- png --> | car icon, marks the departure countdown |
+| <!-- png --> | purple numbers, minutes until you have to leave |
+| <!-- png --> | purple numbers split by a dot, hours until you have to leave |
+| <!-- png --> | red numbers next to the car, the time you have to leave |
+| <!-- png --> | NOW!, you should already be gone |
+| <!-- png --> | red numbers behind NOW!, how many minutes late you are |
 
-Switch between metric and imperial with `units = "metric"` or `units = "imperial"` under `[dashboard.weather]` in `config.toml`, or toggle it in the web UI.
+## Display States
 
-### Mode 2: Event without travel time
+The Dashboard looks different depending on what your calendar holds: whether there are
+events at all, and whether those events carry a departure time.
 
-Clock and weather stay on the left half. To the right of the weather block: event title at the top, start and end time centered below it. Calendar icon with the current day number sits on the right edge, vertically centered.
+### Clock and weather only (no events)
 
-![Mode 2 - Gym, no travel](../../.github/assets/dashboard_mode2.png)
+<img src="../../.github/assets/dashboard_weather_snow_f.png" alt="snow_f" width="512">
 
-### Mode 3: Event with travel time (countdown to departure)
+Switch between °C and °F in the web app under **Panels -> Dashboard -> Weather**, or with
+`units = "metric"` and `units = "imperial"` under `[dashboard.weather]` in `config.toml`.
 
-For events with a travel time, a departure countdown is shown in the space between the weather block and the right edge. Car icon in the top-right corner, calendar icon with day number in the bottom-right. Minutes to leave (large) sit at the top of that space with the departure time below, and the event title is at the bottom next to the calendar icon.
+### Event without travel time
 
-45 min to leave, Casino:
+<img src="../../.github/assets/dashboard_mode2.png" alt="Mode 2 - Gym, no travel" width="512">
 
-![Mode 3 - 45 min](../../.github/assets/dashboard_mode3.png)
+### Event with travel time (countdown to departure)
 
-Far out (90+ min), Night Shift:
+| | |
+|---|---|
+| 45 min to leave, Casino | <img src="../../.github/assets/dashboard_mode3.png" alt="Mode 3 - 45 min" width="384"> |
+| Far out (90+ min), Night Shift | <img src="../../.github/assets/dashboard_mode3_far.png" alt="Mode 3 - 90 min" width="384"> |
 
-![Mode 3 - 90 min](../../.github/assets/dashboard_mode3_far.png)
+When the departure time has passed, the countdown switches to "NOW!" followed by
+how many minutes late you are. The "NOW!" text alternates between purple and orange every second.
 
-### Mode 3: LEAVE NOW
-
-When the departure time has passed, the countdown switches to "NOW!" followed by how many minutes late you are. The text alternates between purple and orange every second.
-
-![Mode 3 - LEAVE NOW](../../.github/assets/dashboard_mode3_late.gif)
-
-## How it works
-
-`display.py` is the renderer. `main.py` owns the async loop.
-
-Weather is fetched in the background and cached in `.weather_cache.json` for 15 minutes. Supported providers: [Open-Meteo](https://open-meteo.com) (default), wttr.in, and NWS (US only). None require an API key.
-
-Calendar events are pushed into `calendar_store.py` via the web API (`POST /calendar`). The store is in-memory, events survive across display ticks but reset on restart.
-
-Set travel time per event with the `_travel_minutes` field. When present, the panel switches to Mode 3 and shows the departure countdown.
+<img src="../../.github/assets/dashboard_mode3_late.gif" alt="Mode 3 - LEAVE NOW" width="512">
 
 ## Setup
 
+### Configuration
+
+Everything below is in the web app under **Panels -> Dashboard**, or in `config.toml` if
+you would rather type. The priority is the exception: it sits under
+**Settings -> Device**, where you drag the panels into the order you want.
+
+```toml
+[dashboard]
+enabled        = true
+priority       = 4
+brightness     = 50                # 1 to 100
+min_duration_s = 3000              # seconds to stay active
+auto_trigger_on_calendar  = true   # trigger the dashboard when a /calendar POST arrives
+auto_trigger_before_event = true   # switch on this many hours before departure
+hours_before_event        = 2.0    # departure is start minus travel
+grace_minutes             = 10     # minutes after departure to keep showing
+```
+
 ### Location for weather
 
-Set your coordinates in `config.toml`:
+The settings for the weather provider, the units and your coordinates are in the web app under
+**Panels -> Dashboard -> Weather**, or here:
 
 ```toml
 [dashboard.weather]
-provider = "openmeteo"   # "openmeteo", "wttr", or "nws"
+provider = "openmeteo"   # "openmeteo", "wttr", or "nws" (USA only)
+units    = "metric"      # "metric" (°C) or "imperial" (°F)
 lat      = 48.2082
 lon      = 16.3738
-units    = "metric"      # "metric" or "imperial"
+# location = "New York"  # city name instead of lat/lon, only used when provider is wttr
 ```
 
 ### Pushing calendar events
 
 Events are sent from a calendar automation (Shortcuts, n8n, Home Assistant, or similar) to the web API:
+
+On iPhone you do not have to build that automation yourself. Ready made shortcuts live in
+[posch-dev/apple-shortcuts](https://github.com/posch-dev/apple-shortcuts):
+
+| Icon                                                                                                                                                              | Shortcut                                                                                                        | What it does |
+|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|---|
+| <img src="https://raw.githubusercontent.com/posch-dev/apple-shortcuts/main/shortcuts/calendar-to-dashboard/icon.png" alt="Calendar to Dashboard icon" width="40"> | [Calendar to Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/calendar-to-dashboard) | Pushes today's events to `POST /calendar`, driving time included |
+| <img src="https://raw.githubusercontent.com/posch-dev/apple-shortcuts/main/shortcuts/morning-dashboard/icon.png" alt="Calendar to Dashboard icon" width="40">     | [Morning Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/morning-dashboard)         | Runs the above from your alarm, only when you are at home                                                       |
+
+#### Rest API Request to push calender events
+
+| | |
+|---|---|
+| Method | `POST` |
+| Endpoint | `http://<pi-ip>:12832/calendar` |
+| Header | `Content-Type: application/json` |
+
+Body, one event as JSON:
+
+| Field | Type | What it is |
+|---|---|---|
+| `title` | string | the event name shown on the panel |
+| `start_time` | string | ISO 8601 with offset, e.g. `2026-09-17T20:00:00+02:00` |
+| `end_time` | string | same format, when the event ends |
+| `isAllDay` | bool | all day events get no time span |
+| `_travel_minutes` | number | optional, driving time in minutes. Leave it out and the event shows without a departure countdown |
+
+Curl Example:
 
 ```bash
 curl -X POST http://<pi-ip>:12832/calendar \
@@ -102,9 +131,6 @@ curl -X POST http://<pi-ip>:12832/calendar \
   }'
 ```
 
-Omit `_travel_minutes` for Mode 2 (event shown without departure countdown).
-
-On iPhone you do not have to build that automation yourself. [Calendar to Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/calendar-to-dashboard) collects the day's events, asks Maps for the driving time and posts them here. [Morning Dashboard](https://github.com/posch-dev/apple-shortcuts/tree/main/shortcuts/morning-dashboard) runs it from your alarm, but only when you are at home.
 
 ## Webhooks
 

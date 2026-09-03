@@ -2,47 +2,38 @@
 
 [Back to README](../../README.md) | [Previous: Clock](../clock/README.md) | [Next: Dashboard](../dashboard/README.md)
 
-Fetches the YouVersion verse of the day and shows it as a pixel-art cross with the book name and chapter:verse reference. Built for Christians who want a quiet daily reminder on their desk without picking up the phone.
+There is one bible verse per day, and the panel shows it at random times throughout the
+day. How often it comes up is a matter of chance, you set the probability and it rolls
+for it in its time windows.
 
-| Short | Medium | Long book name |
-|---|---|---|
-| ![JOHN 5:4](../../.github/assets/verse_short.png) | ![ROMANS 8:18](../../.github/assets/verse_medium.png) | ![REVELATION 22:21](../../.github/assets/verse_long.png) |
+<img src="../../.github/assets/verse_preview.gif" alt="Preview" width="512">
 
-Cross and text are centered together as a group. The cross is on the left of that group in the configured panel color, book name at the top-right of the cross, chapter and verse at the bottom-right, both in PerfectDOS VGA 437. If the book name is too long to fit, it gets trimmed character by character until it does. Numeric prefixes like `1 KINGS` use a tighter gap to save pixels.
+| Short book name                      | Medium book name             | Long book name |
+|--------------------------------------|-------------------------------------------------------|---|
+| <img src="../../.github/assets/verse_short.png" alt="JOHN 5:4" width="256"> | <img src="../../.github/assets/verse_medium.png" alt="ROMANS 8:18" width="256"> | <img src="../../.github/assets/verse_long.png" alt="REVELATION 22:21" width="256"> |
 
-## Priority
-
-Default priority: **2**. It only triggers during configured time windows (7:00-10:00 by default) with a probability roll each tick. Now Playing (priority 3) and Dashboard (priority 4) can override it. Priority is set in `config.toml`.
-
-## How it works
-
-`main.py` calls the YouVersion API once per day to get the verse reference (e.g. `JHN.3.16`), converts it to a display string (`JOHN 3:16`), and renders it. The rendered image is re-sent every `refresh_interval` seconds to keep the display alive without re-fetching. A local JSON cache avoids hitting the API on restart.
-
-## API key: YouVersion
-
-1. Go to [developer.youversion.com](https://developer.youversion.com) and sign in with your YouVersion account.
-2. Create an application to get an App Key.
-3. Add it to your `.env` file:
-
-```env
-YOUVERSION=your_app_key_here
-```
-
-Call `GET /v1/verse_of_the_days/{day_of_year}` with the key in the `X-YVP-App-Key` header.
+Book names that are too long for the line get cut off, like REVELATION above.
 
 ## Configuration
 
+Everything below is in the web app under **Panels -> Verse**, or in `config.toml` if you
+would rather type. The priority is the exception: it sits under **Settings -> Device**,
+where you drag the panels into the order you want.
+
 ```toml
 [verse_of_day]
-priority         = 2
-enabled          = true
-brightness       = 60
-color            = [125, 40, 125]   # RGB purple
-refresh_interval = 30               # seconds between BLE re-sends
-probability      = 0.30             # auto-trigger chance per scheduler tick
-active_hours     = [7, 10]          # hours when auto-trigger can fire
-time_windows     = [[7, 11], [18, 25], [33, 41], [47, 56]]  # minute ranges within each hour
+enabled        = true
+priority       = 2
+brightness     = 100              # 1 to 100
+color          = [255, 255, 255]  # RGB
+min_duration_s = 120              # seconds to show before falling back
+probability    = 0.3              # 0.0 to 1.0, the chance per time window
+translation    = "bolls:ESV"
+# active_hours = [7, 10]          # restrict to an hour range, omit the line for all hours
 ```
+
+The time windows the roll happens in (`time_windows`) and the interval between BLE
+re-sends (`refresh_interval`) are expert settings and live in `[expert]`.
 
 ## Webhooks
 

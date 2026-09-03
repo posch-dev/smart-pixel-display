@@ -10,7 +10,7 @@ An intelligent display controller for a 128x32 iPixel Bluetooth Display.
 Four panels take turns on the display, picked Automatically; By time of day, whether music is
 playing, and what is on your calendar. You can also switch to panels manually.
 
-![Preview](.github/assets/preview.gif)
+<img src=".github/assets/preview.gif" alt="Preview" width="512">
 
 ## Features
 
@@ -58,10 +58,10 @@ but you can always switch through panels manually.
 
 | Panel | What it shows                                                              | |
 |---|----------------------------------------------------------------------------|---|
-| [Clock](panels/clock/README.md) | 24h digital clock                                                          | ![](.github/assets/clock.gif) |
-| [Verse of Day](panels/verse_of_day/README.md) | daily bible verse                                                          | ![](.github/assets/verse_preview.gif) |
-| [Now Playing](panels/now_playing/README.md)\* | Your currently played song with cover art, BPM Visualizer and progress bar | ![](.github/assets/nowplaying_preview.gif) |
-| [Dashboard](panels/dashboard/README.md) | live weather and calendar events with travel countdowns                    | ![](.github/assets/dashboard_preview.gif) |
+| [Clock](panels/clock/README.md) | 24h digital clock                                                          | <img src=".github/assets/clock.gif" width="384"> |
+| [Verse of Day](panels/verse_of_day/README.md) | daily bible verse                                                          | <img src=".github/assets/verse_preview.gif" width="384"> |
+| [Now Playing](panels/now_playing/README.md)\* | Your currently played song with cover art, BPM Visualizer and progress bar | <img src=".github/assets/nowplaying_preview.gif" width="384"> |
+| [Dashboard](panels/dashboard/README.md) | live weather and calendar events with travel countdowns                    | <img src=".github/assets/dashboard_preview.gif" width="384"> |
 
 \*Now Playing needs free API keys. See how to get them [here](panels/now_playing/README.md).
 

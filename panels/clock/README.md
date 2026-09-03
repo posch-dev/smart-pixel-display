@@ -2,37 +2,25 @@
 
 [Back to README](../../README.md) | [Next: Verse of Day](../verse_of_day/README.md)
 
-Full-screen 24h digital clock. The colon blinks every second.
+Full-screen 24h digital clock. The colon blink time is adjustable through
+the settings in the Web Application or in the `config.toml` file.
 
-![Clock cycling through 7 times](../../.github/assets/clock.gif)
+<img src="../../.github/assets/clock.gif" alt="Clock cycling through 7 times" width="512">
 
-Four digit slots (HH MM) laid out symmetrically across the 128x32 display. The font is binary-searched so the digit height fills exactly 32 pixels. The colon sits between hours and minutes and alternates on/off every `blink_interval` seconds.
-
-No network calls. No API keys.
-
-## Priority
-
-Default priority: **1** (lowest). The clock is the fallback - when no other panel is active, the scheduler automatically falls back to it. Any panel with a higher priority (Verse of Day at 2, Now Playing at 3, Dashboard at 4) takes over when its trigger conditions are met. You can change the priority in `config.toml`.
 
 ## Configuration
 
+Everything below is in the web app under **Panels -> Clock**, or in `config.toml` if you
+would rather type. The priority is the exception: it sits under **Settings -> Device**,
+where you drag the panels into the order you want.
+
 ```toml
 [clock]
-priority       = 1
-brightness     = 80           # 0-100
-blink_interval = 2.0          # seconds per colon phase
+enabled        = true
+priority       = 1            # higher number wins over lower
+brightness     = 10           # 1 to 100
 color          = [0, 255, 0]  # RGB, default green
-```
-
-`[device]` settings also apply:
-
-```toml
-[device]
-mac_address     = "XX:XX:XX:XX:XX:XX"
-reconnect_delay = 3
-flip_vertical   = true
-flip_horizontal = true
-active_hours    = [6, 22]     # display only runs between these hours
+blink_interval = 2            # seconds per colon phase
 ```
 
 ## Webhooks

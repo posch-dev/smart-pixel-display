@@ -2,45 +2,72 @@
 
 [Back to README](../../README.md) | [Previous: Dashboard](../dashboard/README.md)
 
-Shows the currently scrobbling track from Last.fm or Libre.fm with album art, title and artist text, a progress bar, and a BPM-synced frequency visualizer.
+Whatever you are listening to right now, on the display.
+It follows your scrobbles, so it does not care which player
+or streaming service the music comes from.
 
-| go away - Tate McRae | trying on shoes - Tate McRae | All The Love - Kanye West |
+<img src="../../.github/assets/nowplaying_preview.gif" alt="Preview" width="512">
+
+# Legend
+
+| Element | What it shows |
+|---|---|
+| <!-- png --> | the cover art of the album |
+| <!-- png --> | the title of the track |
+| <!-- png --> | the artist |
+| <!-- png --> | the album |
+| <!-- png --> | the playhead, how far into the song you are |
+| <!-- png --> | the frequency band, synced to the BPM of the song\* |
+
+\*The frequency band needs [GetSongBPM](https://getsongbpm.com) API
+set, to accurately move with the songs BPM. Without it the panel runs fine
+but falls back to a BPM preset based on the songs genre.
+
+# Scrobbler
+
+The panel does not talk to Spotify, Apple Music or YouTube Music itself. It reads what
+you are listening to from your scrobbler account, Last.fm or Libre.fm. So you need
+something on the device you actually play music on that reports the song
+you are currently playing to that scrobbler account.
+
+| Scrobbler | Platform | Device |
 |---|---|---|
-| ![go away](../../.github/assets/nowplaying_go_away.gif) | ![trying on shoes](../../.github/assets/nowplaying_trying_on_shoes.gif) | ![All The Love](../../.github/assets/nowplaying_all_the_love.gif) |
+| [Pano Scrobbler](https://github.com/kawaiiDango/pano-scrobbler) | Last.fm / Libre.fm | Android, Windows, Linux |
+| [Last.fm app](https://www.last.fm/about/trackmymusic) | Last.fm | Android |
+| [Orchard](https://apps.apple.com/us/app/orchard-music-scrobbler/id6761742676) | Last.fm | iPhone (Apple Music) |
+| [Web Scrobbler](https://web-scrobbler.com) | Last.fm / Libre.fm | Browser (Firefox, Chromium) |
+| [rescrobbled](https://github.com/InputUsername/rescrobbled) | Last.fm | Linux (any MPRIS player) |
+| [Strawberry](https://www.strawberrymusicplayer.org) | Last.fm | Linux, Windows |
+| [Rhythmbox](https://wiki.gnome.org/Apps/Rhythmbox) | Last.fm / Libre.fm | Linux |
+| [mpdscribble](https://github.com/MusicPlayerDaemon/mpdscribble) | Last.fm / Libre.fm | Linux (MPD) |
+| [MusicBee](https://www.getmusicbee.com) | Last.fm | Windows |
+| [foo_scrobble](https://www.foobar2000.org/components/view/foo_scrobble) | Last.fm | Windows (foobar2000) |
 
-The left 32 pixels show the album cover, fetched from iTunes and brightness-boosted for dark images. When no cover is found, a fallback placeholder is shown instead. The center column shows the track title in light blue at the top, artist and album below in accent colors picked from the cover. Text that doesn't fit the column gets clipped. The right 32 pixels are an 8-bar frequency visualizer that pulses to the BPM, bar heights shaped by the genre preset (more bass for hip hop, higher for pop, etc.) with colors from the cover accents. The bottom two pixel rows are the progress bar, filling left to right as the track plays.
+All of them report the song while it is still playing, and that is what the panel needs.
+It reads the "now playing" state of your account, not your play history, so a scrobbler
+that only submits finished songs or catches up later leaves the display empty. The
+official Last.fm app on iPhone is such a case, it scans your Apple Music library after the
+fact, which is why it is listed for Android only.
 
-## Priority
+Pano Scrobbler catches nearly every player on the phone, and Web Scrobbler covers YouTube
+Music, Spotify Web, Apple Music, SoundCloud and a long list more.
 
-Default priority: **3**. Activates whenever a track is scrobbling. Dashboard (priority 4) can override it when a calendar event is active. Priority is set in `config.toml`.
-
-## How it works
-
-You need a Last.fm or Libre.fm scrobbler running on your phone or computer. Scrobblers exist for all major platforms and as browser extensions - what they can pick up (local files, streaming services, etc.) depends on the app.
-
-`poller.py` runs in a background thread and polls your scrobbler at the configured rate. When a new track is detected:
-
-1. Cover art is fetched from iTunes (no key needed).
-2. BPM is looked up via GetSongBPM, with a genre-based estimate as fallback. Results are cached in a local SQLite database (`bpm_cache.db`).
-3. Genre tags are fetched from Last.fm and used to pick a visualizer preset.
-4. The `state` dict is updated.
-
-`display.py` consumes the state and calls `generate_gif()`, which renders `frames_per_beat x 2` frames (one full beat, looping). The GIF is pushed to the device and re-generated on each track change.
-
-`main.py` ties everything together, handles the slot upload/switch cycle, and re-renders when BPM arrives late.
-
-## Scrobbler switching
-
-You can switch between Last.fm and Libre.fm in `config.toml` or from the web UI under the NowPlaying card. Last.fm allows up to 4 polls per second, Libre.fm is capped at 1 per second.
+>My own setup, if it helps: on Windows the
+>[Web Scrobbler](https://web-scrobbler.com) browser extension, on the iPhone
+>[Orchard](https://apps.apple.com/us/app/orchard-music-scrobbler/id6761742676) for Apple
+>Music, and on Linux [rescrobbled](https://github.com/InputUsername/rescrobbled) as a
+>system wide daemon, with its player whitelist set to
+>[Sidra](https://github.com/wimpysworld/sidra) so nothing else gets scrobbled.
 
 ## API keys
 
-All keys go in the `.env` file in the project root.
+Now Playing is the only panel that needs API keys, and all of them are free. The installer
+asks for them, or you write them into `.env` yourself.
 
 ### Last.fm
 
 1. Go to [last.fm/api/account/create](https://www.last.fm/api/account/create).
-2. Fill in the app name and description, then submit.
+2. Fill in anything for the app name and description, then submit.
 3. Copy the API key and shared secret.
 
 ```env
@@ -51,7 +78,7 @@ LASTFM_USERNAME=your_lastfm_username
 
 ### Libre.fm
 
-No API key needed - just your username and password.
+No API key needed, just your username and password.
 
 ```env
 LIBREFM_USERNAME=your_librefm_username
@@ -67,36 +94,41 @@ LIBREFM_PASSWORD=your_librefm_password
 GETSONGBPM_API_KEY=your_api_key
 ```
 
-### iTunes
-
-Cover art is fetched from the iTunes Search API. No key or account needed.
-
 ## Configuration
+
+Everything below is in the web app under **Panels -> NowPlaying**, or in `config.toml` if
+you would rather type. The priority is the exception: it sits under
+**Settings -> Device**, where you drag the panels into the order you want.
 
 ```toml
 [nowplaying]
+enabled    = false        # needs last.fm or libre.fm credentials in .env
 priority   = 3
-enabled    = true
-brightness = 80
-scrobbler  = "lastfm"   # "lastfm" or "librefm"
-poll_s     = 0.5        # poll interval in seconds (min 0.25 for Last.fm, min 1.0 for Libre.fm)
-slot_a     = 0          # BLE slot for primary GIF
-slot_b     = 1          # BLE slot for standby GIF
-chunk_s    = 20         # seconds per GIF chunk before re-rendering
-font       = 3          # 1=PressStart2P  2=HIAIRP22  3=MinecraftStandard  4=pcsenior
+brightness = 50           # 1 to 100
+scrobbler  = "lastfm"     # "lastfm" or "librefm"
+font       = 3            # 1=PressStart2P  2=HIAIRP22  3=MinecraftStandard  4=pcsenior
 ```
 
-The genre preset (the frequency curve that shapes the visualizer bars) is picked automatically from Last.fm genre tags. All presets are in `panels/now_playing/genre_presets.py`.
+The BLE image slots (`slot_a`, `slot_b`), the poll interval (`poll_s`) and the chunk
+length (`chunk_s`) are expert settings and live in `[expert]`.
 
 ## Webhooks
 
-Now Playing supports `on_enter`, `on_exit`, and `on_song_change` webhooks. `on_song_change` fires when a new song is actually displayed (after GIF upload and slot switch, not just on detect) and includes template variables for accent colors and track info:
+| Event | Fires when |
+|---|---|
+| `on_enter` | the panel takes over the display |
+| `on_exit` | it hands the display back |
+| `on_song_change` | a new song is actually on the display, after the GIF upload and the slot switch, not when it is detected |
 
-- `{{title}}`, `{{artist}}`, `{{album}}`
-- `{{accent1_hex}}`, `{{accent1_rgb}}`, `{{accent1_r}}`, `{{accent1_g}}`, `{{accent1_b}}`
-- `{{accent1_hsv}}`, `{{accent1_h}}`, `{{accent1_s}}`, `{{accent1_v}}`
-- `{{accent1_full_hex}}`, `{{accent1_full_rgb}}`, `{{accent1_full_r/g/b}}` (same hue at 100% brightness)
-- Same for `accent2` and `accent3`
+`on_song_change` brings template variables with it:
+
+| Variable | What it is |
+|---|---|
+| `{{title}}`, `{{artist}}`, `{{album}}` | the track |
+| `{{accent1_hex}}`, `{{accent1_rgb}}`, `{{accent1_r}}`, `{{accent1_g}}`, `{{accent1_b}}` | the first accent color picked from the cover |
+| `{{accent1_hsv}}`, `{{accent1_h}}`, `{{accent1_s}}`, `{{accent1_v}}` | the same color as HSV |
+| `{{accent1_full_hex}}`, `{{accent1_full_rgb}}`, `{{accent1_full_r/g/b}}` | the same hue at 100% brightness |
+| `accent2`, `accent3` | the same set again for the second and third accent |
 
 Full-brightness variants are the same hue but at max value, for things like WLED that handle brightness on their own.
 
@@ -107,7 +139,5 @@ python panels/now_playing/main.py
 ```
 
 ---
-
-Partially powered by [GetSongBPM](https://getsongbpm.com).
 
 [Back to README](../../README.md) | [Previous: Dashboard](../dashboard/README.md)
