@@ -38,9 +38,9 @@ from panels.now_playing.main import run_loop as np_run_loop
 
 MAC_ADDRESS     = config.get("device", "mac_address")
 RECONNECT_DELAY = config.get("device", "reconnect_delay")
-BLINK_INTERVAL  = config.get("clock",  "blink_interval")
 MAX_SLOTS       = 256
 BLE_SEND_TIMEOUT = 5
+_CLOCK_TICK     = 0.5
 
 
 def _ts() -> str:
@@ -193,20 +193,25 @@ def _get_active_brightness(mode: str) -> int:
 
 
 async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
-    colon_on = True
-    hour, minute = "", ""
+    last_sent = None
     while True:
-        if colon_on:
-            now    = datetime.now()
-            hour   = f"{now.hour:02d}"
-            minute = f"{now.minute:02d}"
-        frame = render_frame(hour, minute, colon_on)
-        if clearing[0]:
-            frame = _add_clearing_pixel(frame)
-        async with ble_lock:
-            await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=BLE_SEND_TIMEOUT)
-        colon_on = not colon_on
-        await asyncio.sleep(BLINK_INTERVAL)
+        blink_interval = config.get("clock", "blink_interval", 1.0)
+        now = datetime.now()
+        hour = f"{now.hour:02d}"
+        minute = f"{now.minute:02d}"
+        if blink_interval == 0:
+            colon_on = True
+        else:
+            colon_on = int(time.time() / blink_interval) % 2 == 0
+        triple = (hour, minute, colon_on)
+        if triple != last_sent:
+            frame = render_frame(hour, minute, colon_on)
+            if clearing[0]:
+                frame = _add_clearing_pixel(frame)
+            async with ble_lock:
+                await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=BLE_SEND_TIMEOUT)
+            last_sent = triple
+        await asyncio.sleep(_CLOCK_TICK)
 
 
 async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
