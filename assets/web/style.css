@@ -20,6 +20,7 @@
   --input:   #121212;
   --raster:  #2c2c2c;
   --muted-hi: #9c9c9c;
+  --shade: 0,0,0;
 }
 [data-theme="light"] {
   --bg:      #dcdcdc;
@@ -31,6 +32,7 @@
   --input:   #f7f7f7;
   --raster:  #9a9a9a;
   --muted-hi: #5a5a5a;
+  --shade: 138,138,138;
   --green:   #15803d;
   --red:     #b91c1c;
 }
@@ -396,6 +398,57 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   display: flex; align-items: center; justify-content: center;
   container-type: inline-size;
 }
+/* out of the way until the pointer asks for it, always there on touch */
+#bp-full-btn {
+  position: absolute; top: 6px; right: 6px; z-index: 3;
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--card) 75%, transparent);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s, color .15s;
+}
+#bp-full-btn .ico { width: 14px; height: 14px; }
+.blueprint:hover #bp-full-btn, #bp-full-btn:focus-visible { opacity: 1; }
+#bp-full-btn:hover { color: var(--text); border-color: var(--accent); }
+@media (hover: none) { #bp-full-btn { opacity: 1; } }
+/* the tools sit on the dimmed ground, never on top of the panel */
+#bp-full-tools {
+  position: absolute; top: 14px; right: 14px; z-index: 1; display: flex; gap: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(var(--shade),.9), 0 6px 14px rgba(var(--shade),.85),
+              0 14px 40px rgba(var(--shade),.8), 0 0 70px 20px rgba(var(--shade),.7),
+              0 0 140px 60px rgba(var(--shade),.55);
+}
+.bp-full-tool {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.78); border: 1px solid rgba(255,255,255,.65); border-radius: 8px;
+  color: #fff; cursor: pointer;
+}
+.bp-full-tool:hover { border-color: #fff; background: rgba(0,0,0,.9); }
+.bp-full-tool .ico { width: 16px; height: 16px; }
+#bp-full-overlay .blueprint #bp-full-btn { display: none; }
+#bp-full-slot { width: 90%; }
+
+/* the preview on a page of its own */
+.pv-body { min-height: 100dvh; display: flex; align-items: center; justify-content: center; }
+.pv-stage { width: 90%; }
+#pv-burger {
+  position: fixed; top: 14px; right: 14px; z-index: 2;
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--muted); cursor: pointer;
+}
+#pv-burger:hover { color: var(--text); border-color: var(--accent); }
+#pv-menu {
+  display: none; position: fixed; top: 56px; right: 14px; z-index: 2; width: 320px; max-width: calc(100vw - 28px);
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  max-height: calc(100dvh - 76px); overflow-y: auto;
+}
+#pv-menu.show { display: block; }
+#pv-menu .row:last-child { border-bottom: none; }
+.pv-note { font-size: 9px; font-weight: 400; letter-spacing: 0; text-transform: none;
+  color: var(--muted); text-align: right; max-width: 60%; }
+#bp-full-overlay .blueprint { width: 100%; }
+
 .blueprint-inner {
   position: relative; z-index: 1; padding: 3.5cqw; text-align: center; width: 100%;
   align-self: stretch; display: flex; flex-direction: column; justify-content: center;
@@ -463,13 +516,13 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   position: relative; --head: 1.7cqw;
   height: .9cqw; border-radius: .45cqw; background: var(--border); margin-top: 2.6cqw;
 }
-.bp-bar-fill { height: 100%; background: var(--np1, var(--accent)); border-radius: inherit; width: 0; transition: width .4s linear; }
+.bp-bar-fill { height: 100%; background: var(--np1, var(--accent)); border-radius: inherit; width: 0; }
 /* clamped so the head never hangs off either end of the track */
 .bp-bar-head {
   position: absolute; top: 50%; width: var(--head); height: var(--head);
   border-radius: 50%; background: var(--np2, var(--accent-hd, var(--accent)));
   left: clamp(calc(var(--head) / 2), var(--pct, 0%), calc(100% - var(--head) / 2));
-  transform: translate(-50%, -50%); transition: left .4s linear;
+  transform: translate(-50%, -50%);
 }
 .bp-times { display: flex; justify-content: space-between; font-size: 2.2cqw; color: var(--muted); margin-top: .9cqw; font-variant-numeric: tabular-nums; }
 #bp-elapsed { color: var(--np2, var(--accent)); }

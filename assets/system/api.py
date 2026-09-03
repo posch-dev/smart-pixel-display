@@ -99,6 +99,11 @@ def web_ui():
     return send_from_directory(_web, "index.html")
 
 
+@app.get("/preview")
+def web_preview():
+    return send_from_directory(_web, "preview.html")
+
+
 @app.get("/assets/fonts/<path:filename>")
 def web_font(filename):
     return send_from_directory(os.path.join(_root, "assets", "fonts"), filename)

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Pixel Display</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="pv-body">
+
+<div id="pv-sprite" hidden></div>
+
+<button id="pv-burger" onclick="togglePvMenu()" title="Settings">
+  <svg class="ico"><use href="#ico-grip"/></svg>
+</button>
+
+<div id="pv-menu">
+  <div class="card-title">Preview<span class="pv-note">This page only</span></div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Show</div></div>
+    <div class="row-right"><select id="pv-follow" onchange="setPvFollow(this.value)">
+      <option value="live">Follow the display</option>
+      <option value="clock">Clock</option>
+      <option value="verse_of_day">Verse</option>
+      <option value="nowplaying">NowPlaying</option>
+      <option value="dashboard">Dashboard</option>
+    </select></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Theme</div></div>
+    <div class="row-right"><div class="seg">
+      <button onclick="setPvTheme('dark')" id="pv-theme-dark">Dark</button>
+      <button onclick="setPvTheme('light')" id="pv-theme-light">Light</button>
+    </div></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Accent</div></div>
+    <div class="row-right"><input type="color" id="pv-accent" oninput="setPvAccent(this.value)"></div>
+  </div>
+  <div class="card-title">Appearance</div>
+  <div id="pv-panels"></div>
+</div>
+
+<div class="pv-stage">
+  <div class="blueprint" id="home-blueprint">
+    <div class="blueprint-inner" id="blueprint-content"></div>
+    <div class="dot-raster"></div>
+  </div>
+</div>
+
+<script src="blueprint.js"></script>
+<script src="preview.js"></script>
+</body>
+</html>
