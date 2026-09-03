@@ -326,13 +326,24 @@ async def _dashboard_event_watcher() -> None:
         await asyncio.sleep(60)
 
 
-async def _cancel(task: asyncio.Task | None) -> None:
-    if task and not task.done():
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+async def _cancel(task: asyncio.Task | None, lock: asyncio.Lock | None = None) -> None:
+    if not task or task.done():
+        return
+    # cancelling into a send in flight leaves the device halfway through a frame,
+    # and it eats whatever command is written next
+    if lock:
+        async with lock:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):
+        pass
 
 async def run() -> None:
     config.init_event(asyncio.get_running_loop())
@@ -371,6 +382,7 @@ async def run() -> None:
                 ble_lock = asyncio.Lock()
                 clearing = [True]
                 last_brightness_sent = -1
+                brightness_asserts = 0
 
                 need_clear = (not _ever_connected
                               or _disconnect_at is None
@@ -430,9 +442,10 @@ async def run() -> None:
                     if not scheduler.get_display_on():
                         if current_mode:
                             asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
-                        await _cancel(mode_task)
+                        await _cancel(mode_task, ble_lock)
                         mode_task = current_mode = None
                         last_brightness_sent = -1
+                        brightness_asserts = 0
                         np_poller.pause()
                         md_display.stop_weather()
                         async with ble_lock:
@@ -459,9 +472,10 @@ async def run() -> None:
                     if _out_of_hours():
                         if current_mode:
                             asyncio.create_task(webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode)))
-                        await _cancel(mode_task)
+                        await _cancel(mode_task, ble_lock)
                         mode_task = current_mode = None
                         last_brightness_sent = -1
+                        brightness_asserts = 0
                         np_poller.pause()
                         md_display.stop_weather()
                         async with ble_lock:
@@ -518,11 +532,12 @@ async def run() -> None:
                     if mode != current_mode or (mode_task and mode_task.done()):
                         if current_mode and current_mode != mode:
                             await webhooks.fire(current_mode, "on_exit", _mode_color_ctx(current_mode))
-                        await _cancel(mode_task)
+                        await _cancel(mode_task, ble_lock)
                         prev_mode = current_mode
                         current_mode = mode
                         _last_mode = mode
                         last_brightness_sent = -1
+                        brightness_asserts = 2
                         print(f"{_ts()} [mode] → {mode}")
                         if mode != prev_mode:
                             async def _delayed_enter(m, ctx):
@@ -548,10 +563,13 @@ async def run() -> None:
 
                     if current_mode != "nowplaying":
                         eff = _get_active_brightness(current_mode or "clock")
-                        if eff != last_brightness_sent:
+                        # once before the panel draws and once after, the first frame of a
+                        # new mode lands between them and clock and dashboard never re-assert
+                        if eff != last_brightness_sent or brightness_asserts:
                             async with ble_lock:
                                 await client.set_brightness(eff)
                             last_brightness_sent = eff
+                            brightness_asserts = max(0, brightness_asserts - 1)
 
                     await asyncio.sleep(0.5)
 
