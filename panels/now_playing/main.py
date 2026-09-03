@@ -20,9 +20,9 @@ from pypixelcolor import AsyncClient
 from PIL import Image
 
 MAC      = config.get("device",     "mac_address")
-SLOT_A   = config.get("nowplaying", "slot_a", 1)
-SLOT_B   = config.get("nowplaying", "slot_b", 2)
-CHUNK_S  = config.get("nowplaying", "chunk_s", 20)
+SLOT_A   = config.get("expert", "slot_a", 1)
+SLOT_B   = config.get("expert", "slot_b", 2)
+CHUNK_S  = config.get("expert", "chunk_s", 20)
 PREP_S   = 8      # start preparing next chunk this many seconds before switch
 LAST_10  = 10     # if <= this many seconds remain, let current song finish
 MAX_REPS   = 2      # same (title, artist) more than this many times -> ignored

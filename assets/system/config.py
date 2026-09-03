@@ -1,4 +1,4 @@
-# Central config, reads and writes config.toml while preserving comments.
+# Central config, reads and writes config.toml at the repo root while preserving comments.
 
 import asyncio
 import os
@@ -7,7 +7,7 @@ from PIL import Image
 
 import assets.system.log as log
 
-_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.toml")
+_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config.toml")
 _doc: tomlkit.TOMLDocument | None = None
 _changed: asyncio.Event | None = None
 _loop: asyncio.AbstractEventLoop | None = None
@@ -80,7 +80,7 @@ def set(section: str, key: str, value) -> None:
         doc[section][key] = value
     if old != value:
         log.info("config", f"{section}.{key}: {_short(old)} -> {_short(value)}")
-    if section == "server" and key == "debug_log":
+    if section == "expert" and key == "debug_log":
         log.set_debug(bool(value))
     _save()
     notify_changed()

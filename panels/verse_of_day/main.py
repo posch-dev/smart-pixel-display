@@ -14,7 +14,7 @@ import assets.system.config as config
 
 MAC_ADDRESS      = config.get("device",       "mac_address")
 BRIGHTNESS       = config.get("verse_of_day", "brightness")
-REFRESH_INTERVAL = config.get("verse_of_day", "refresh_interval")
+REFRESH_INTERVAL = config.get("expert",       "refresh_interval", 30)
 BACKGROUND       = (0, 0, 0)
 
 FONT_PATH  = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts", "PerfectDOS_VGA_437.ttf")

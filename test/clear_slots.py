@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 
 import asyncio
+import os
+import sys
 from pypixelcolor import AsyncClient
 
-MAC_ADDRESS          = "XX:XX:XX:XX:XX:XX"
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import assets.system.config as config
+
+MAC_ADDRESS          = config.get("device", "mac_address")
 MAX_SLOTS_TO_PROBE   = 256  # device accepts all 256 indices (1-byte slot field)
 STOP_AFTER_FAILURES  = 3   # device never returns failures in practice, just caps the probe loop
 
@@ -40,7 +45,7 @@ async def run() -> None:
                         print(f"  Slot {slot:3d}: failed ({e})")
 
                     if consecutive_failures >= STOP_AFTER_FAILURES:
-                        print(f"\n  {STOP_AFTER_FAILURES} consecutive failures — "
+                        print(f"\n  {STOP_AFTER_FAILURES} consecutive failures, "
                               f"assuming no more slots after index {slot - STOP_AFTER_FAILURES + 1}.")
                         break
 

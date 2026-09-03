@@ -34,7 +34,7 @@ async def run() -> None:
         print(f"Display: {display_w}x{display_h}")
 
         await client.set_brightness(BRIGHTNESS)
-        print("Cycling references — press Ctrl+C to stop.\n")
+        print("Cycling references, press Ctrl+C to stop.\n")
 
         i = 0
         while True:

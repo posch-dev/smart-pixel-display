@@ -1,12 +1,12 @@
 # Dashboard
 
-[Back to README](../../README.md) | [Previous: Verse of Day](../verse_of_day/verse_of_day.md) | [Next: Now Playing](../now_playing/now_playing.md)
+[Back to README](../../README.md) | [Previous: Verse of Day](../verse_of_day/README.md) | [Next: Now Playing](../now_playing/README.md)
 
 Clock, live weather, and upcoming calendar events with travel-time warnings on one screen.
 
 ## Priority
 
-Default priority: **4** (highest). When an event is pushed to the dashboard, it takes over from everything else. Now Playing (priority 3) and lower-priority panels yield to it. Priority is set in `assets/config.toml`.
+Default priority: **4** (highest). When an event is pushed to the dashboard, it takes over from everything else. Now Playing (priority 3) and lower-priority panels yield to it. Priority is set in `config.toml`.
 
 ## Display modes
 
@@ -36,7 +36,7 @@ Imperial (°F):
 |---|---|
 | ![sunny_f](../../.github/assets/dashboard_weather_sunny_f.png) | ![snow_f](../../.github/assets/dashboard_weather_snow_f.png) |
 
-Switch between metric and imperial with `units = "metric"` or `units = "imperial"` under `[dashboard.weather]` in `assets/config.toml`, or toggle it in the web UI.
+Switch between metric and imperial with `units = "metric"` or `units = "imperial"` under `[dashboard.weather]` in `config.toml`, or toggle it in the web UI.
 
 ### Mode 2: Event without travel time
 
@@ -76,7 +76,7 @@ Set travel time per event with the `_travel_minutes` field. When present, the pa
 
 ### Location for weather
 
-Set your coordinates in `assets/config.toml`:
+Set your coordinates in `config.toml`:
 
 ```toml
 [dashboard.weather]
@@ -91,7 +91,7 @@ units    = "metric"      # "metric" or "imperial"
 Events are sent from a calendar automation (Shortcuts, n8n, Home Assistant, or similar) to the web API:
 
 ```bash
-curl -X POST http://<pi-ip>:5000/calendar \
+curl -X POST http://<pi-ip>:12832/calendar \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Casino",
@@ -120,4 +120,4 @@ python panels/dashboard/display.py --test
 
 ---
 
-[Back to README](../../README.md) | [Previous: Verse of Day](../verse_of_day/verse_of_day.md) | [Next: Now Playing](../now_playing/now_playing.md)
+[Back to README](../../README.md) | [Previous: Verse of Day](../verse_of_day/README.md) | [Next: Now Playing](../now_playing/README.md)

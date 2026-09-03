@@ -1,6 +1,6 @@
 # Clock
 
-[Back to README](../../README.md) | [Next: Verse of Day](../verse_of_day/verse_of_day.md)
+[Back to README](../../README.md) | [Next: Verse of Day](../verse_of_day/README.md)
 
 Full-screen 24h digital clock. The colon blinks every second.
 
@@ -12,7 +12,7 @@ No network calls. No API keys.
 
 ## Priority
 
-Default priority: **1** (lowest). The clock is the fallback - when no other panel is active, the scheduler automatically falls back to it. Any panel with a higher priority (Verse of Day at 2, Now Playing at 3, Dashboard at 4) takes over when its trigger conditions are met. You can change the priority in `assets/config.toml`.
+Default priority: **1** (lowest). The clock is the fallback - when no other panel is active, the scheduler automatically falls back to it. Any panel with a higher priority (Verse of Day at 2, Now Playing at 3, Dashboard at 4) takes over when its trigger conditions are met. You can change the priority in `config.toml`.
 
 ## Configuration
 
@@ -47,4 +47,4 @@ python panels/clock/main.py
 
 ---
 
-[Back to README](../../README.md) | [Next: Verse of Day](../verse_of_day/verse_of_day.md)
+[Back to README](../../README.md) | [Next: Verse of Day](../verse_of_day/README.md)

@@ -1279,7 +1279,7 @@ function showVersion() {
 
 function initAppearance() {
   setThemeMode(getCookie('spd_theme') || localStorage.getItem('theme') || 'dark');
-  setAccent(getCookie('spd_accent') || localStorage.getItem('accent') || '#87a878');
+  setAccent(getCookie('spd_accent') || localStorage.getItem('accent') || DEFAULT_ACCENT);
   _applyPreviewMode(getCookie('spd_preview') || 'web');
   buildTwinPanels();
   applyTwin(twinOn());

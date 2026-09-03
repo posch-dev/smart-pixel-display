@@ -23,16 +23,16 @@ BLE communication uses [pypixelcolor](https://pypi.org/project/pypixelcolor/).
 
 ## Panels
 
-Each panel has a priority in `assets/config.toml`. Higher number wins. Clock is always on as the fallback at priority 1.
+Each panel has a priority in `config.toml`. Higher number wins. Clock is always on as the fallback at priority 1.
 
 The scheduler handles switching automatically. Now Playing triggers when it detects a track scrobbling, Dashboard triggers when a calendar event is active, Verse of Day fires on a probability roll during its configured time windows. Manually triggering a panel from the web UI or API overrides the auto-scheduler until you hit "reset to auto". Outside `active_hours`, the display goes dark.
 
 | Panel | What it shows |
 |---|---|
-| [Clock](panels/clock/clock.md) | ![](.github/assets/clock.gif) <br> 24h digital clock with blinking colon |
-| [Verse of Day](panels/verse_of_day/verse_of_day.md)* | ![](.github/assets/verse_preview.gif) <br> Daily Bible verse from YouVersion |
-| [Now Playing](panels/now_playing/now_playing.md)* | ![](.github/assets/nowplaying_preview.gif) <br> Last.fm/Libre.fm track with cover art, BPM visualizer, progress bar |
-| [Dashboard](panels/dashboard/dashboard.md) | ![](.github/assets/dashboard_preview.gif) <br> Live weather and calendar events with travel countdowns |
+| [Clock](panels/clock/README.md) | ![](.github/assets/clock.gif) <br> 24h digital clock with blinking colon |
+| [Verse of Day](panels/verse_of_day/README.md)* | ![](.github/assets/verse_preview.gif) <br> Daily Bible verse from YouVersion |
+| [Now Playing](panels/now_playing/README.md)* | ![](.github/assets/nowplaying_preview.gif) <br> Last.fm/Libre.fm track with cover art, BPM visualizer, progress bar |
+| [Dashboard](panels/dashboard/README.md) | ![](.github/assets/dashboard_preview.gif) <br> Live weather and calendar events with travel countdowns |
 
 \*Requires free API keys. Check the panel's `.md` file for which keys you need and how to get them.
 
@@ -59,7 +59,7 @@ pip install -r requirements.txt
 
 ### 2. Configure your device
 
-Add your panel's MAC address to `assets/config.toml`:
+Add your panel's MAC address to `config.toml`:
 
 ```toml
 [device]
@@ -88,7 +88,7 @@ LIBREFM_PASSWORD=your_librefm_password
 GETSONGBPM_API_KEY=your_getsongbpm_key
 ```
 
-Clock and Dashboard work out of the box, no keys needed. Now Playing supports [Last.fm or Libre.fm](panels/now_playing/now_playing.md) as scrobbler. All keys are free. Check [now_playing.md](panels/now_playing/now_playing.md) and [verse_of_day.md](panels/verse_of_day/verse_of_day.md) for step-by-step instructions on how to get and set them up.
+Clock and Dashboard work out of the box, no keys needed. Now Playing supports [Last.fm or Libre.fm](panels/now_playing/README.md) as scrobbler. All keys are free. Check the [Now Playing](panels/now_playing/README.md) and [Verse of Day](panels/verse_of_day/README.md) pages for step-by-step instructions on how to get and set them up.
 
 ### 3. Start
 
@@ -97,7 +97,7 @@ source .venv/bin/activate
 python startup.py
 ```
 
-The web UI will be at `http://<device-ip>:5000`.
+The web UI will be at `http://<device-ip>:12832`.
 
 You can also run each panel standalone:
 ```bash
@@ -118,7 +118,7 @@ journalctl -u smartpixeldashboard -f          # Live logs
 
 ## Configuration
 
-Everything lives in `assets/config.toml`. The web UI and API write changes back to disk immediately. Key settings:
+Everything lives in `config.toml`. The web UI and API write changes back to disk immediately. Key settings:
 
 ```toml
 [device]
@@ -152,7 +152,7 @@ Each panel supports webhooks* that fire HTTP requests on `on_enter` and `on_exit
 
 ## Web UI and API
 
-The web UI at port 5000 lets you switch panels, adjust brightness, configure webhooks, and change settings. The REST API:
+The web UI at port 12832 lets you switch panels, adjust brightness, configure webhooks, and change settings. The REST API:
 
 ```
 GET    /status                 - active mode, connected state, clearing status

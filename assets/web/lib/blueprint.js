@@ -22,6 +22,9 @@ function cssHex(raw) {
 }
 function hexToRgb(hex) { return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)); }
 
+// the stylesheet owns the accent, read it once before anything overrides it inline
+const DEFAULT_ACCENT = cssHex(getComputedStyle(document.documentElement).getPropertyValue('--accent'));
+
 // the accent is drawn as text on both card colours, so it has to clear
 // a floor against each of them
 const ACCENT_MIN_ON_LIGHT = 2.4;

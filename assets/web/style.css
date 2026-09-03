@@ -1,6 +1,6 @@
 :root {
-  --accent:   #87a878;
-  --accent-d: rgba(135,168,120,.12);
+  --accent:   #86a777;
+  --accent-d: color-mix(in srgb, var(--accent) 12%, transparent);
   --green:    #4ade80;
   --red:      #f87171;
   --blue:     #60a5fa;

@@ -1,6 +1,6 @@
 # Now Playing
 
-[Back to README](../../README.md) | [Previous: Dashboard](../dashboard/dashboard.md)
+[Back to README](../../README.md) | [Previous: Dashboard](../dashboard/README.md)
 
 Shows the currently scrobbling track from Last.fm or Libre.fm with album art, title and artist text, a progress bar, and a BPM-synced frequency visualizer.
 
@@ -12,7 +12,7 @@ The left 32 pixels show the album cover, fetched from iTunes and brightness-boos
 
 ## Priority
 
-Default priority: **3**. Activates whenever a track is scrobbling. Dashboard (priority 4) can override it when a calendar event is active. Priority is set in `assets/config.toml`.
+Default priority: **3**. Activates whenever a track is scrobbling. Dashboard (priority 4) can override it when a calendar event is active. Priority is set in `config.toml`.
 
 ## How it works
 
@@ -31,7 +31,7 @@ You need a Last.fm or Libre.fm scrobbler running on your phone or computer. Scro
 
 ## Scrobbler switching
 
-You can switch between Last.fm and Libre.fm in `assets/config.toml` or from the web UI under the NowPlaying card. Last.fm allows up to 4 polls per second, Libre.fm is capped at 1 per second.
+You can switch between Last.fm and Libre.fm in `config.toml` or from the web UI under the NowPlaying card. Last.fm allows up to 4 polls per second, Libre.fm is capped at 1 per second.
 
 ## API keys
 
@@ -110,4 +110,4 @@ python panels/now_playing/main.py
 
 Partially powered by [GetSongBPM](https://getsongbpm.com).
 
-[Back to README](../../README.md) | [Previous: Dashboard](../dashboard/dashboard.md)
+[Back to README](../../README.md) | [Previous: Dashboard](../dashboard/README.md)

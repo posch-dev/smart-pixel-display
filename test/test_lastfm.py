@@ -27,16 +27,16 @@ while True:
             artist = track.artist.name
 
             if title == last_title:
-                print(f"[15s] Still playing: {artist} — {title}")
+                print(f"[15s] Still playing: {artist} - {title}")
             else:
                 last_title = title
                 print("\n" + "═" * 60)
-                print(f"  NOW PLAYING: {artist} — {title}")
+                print(f"  NOW PLAYING: {artist} - {title}")
                 print("═" * 60)
 
                 try:
                     album = track.get_album()
-                    print(f"  Album:     {album.title if album else '—'}")
+                    print(f"  Album:     {album.title if album else '-'}")
                 except Exception:
                     print("  Album:     (unavailable)")
 
@@ -50,7 +50,7 @@ while True:
 
                 try:
                     mbid = track.get_mbid()
-                    print(f"  MBID:      {mbid or '—'}")
+                    print(f"  MBID:      {mbid or '-'}")
                 except Exception:
                     pass
 

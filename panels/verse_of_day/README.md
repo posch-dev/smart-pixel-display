@@ -1,6 +1,6 @@
 # Verse of Day
 
-[Back to README](../../README.md) | [Previous: Clock](../clock/clock.md) | [Next: Dashboard](../dashboard/dashboard.md)
+[Back to README](../../README.md) | [Previous: Clock](../clock/README.md) | [Next: Dashboard](../dashboard/README.md)
 
 Fetches the YouVersion verse of the day and shows it as a pixel-art cross with the book name and chapter:verse reference. Built for Christians who want a quiet daily reminder on their desk without picking up the phone.
 
@@ -12,7 +12,7 @@ Cross and text are centered together as a group. The cross is on the left of tha
 
 ## Priority
 
-Default priority: **2**. It only triggers during configured time windows (7:00-10:00 by default) with a probability roll each tick. Now Playing (priority 3) and Dashboard (priority 4) can override it. Priority is set in `assets/config.toml`.
+Default priority: **2**. It only triggers during configured time windows (7:00-10:00 by default) with a probability roll each tick. Now Playing (priority 3) and Dashboard (priority 4) can override it. Priority is set in `config.toml`.
 
 ## How it works
 
@@ -56,6 +56,6 @@ python panels/verse_of_day/main.py
 
 ---
 
-[Back to README](../../README.md) | [Previous: Clock](../clock/clock.md) | [Next: Dashboard](../dashboard/dashboard.md)
+[Back to README](../../README.md) | [Previous: Clock](../clock/README.md) | [Next: Dashboard](../dashboard/README.md)
 
 Amen.

@@ -363,8 +363,11 @@ def home():
     }), 200
 
 
-def run(host: str = "0.0.0.0", port: int = 5000) -> None:
-    app.run(host=host, port=port, debug=False)
+def run(host: str = "0.0.0.0", port: int = 12832) -> None:
+    try:
+        app.run(host=host, port=port, debug=False)
+    except OSError as e:
+        log.error("web", f"cannot listen on {host}:{port}: {e}. set expert.port in config.toml")
 
 
 if __name__ == "__main__":

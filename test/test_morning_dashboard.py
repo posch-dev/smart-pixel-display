@@ -76,18 +76,18 @@ now = datetime.now(LOCAL_TZ)
 
 # leave_dt = start - 35 - 5 = now + 103 - 40 = now + 63 min
 run_scenario(
-    "Scenario 1 — event in 1h43m, 35min travel",
+    "Scenario 1, event in 1h43m, 35min travel",
     [fhwn_event(now + timedelta(hours=1, minutes=43), 35)],
 )
 
 # leave_dt = now - 7  →  start = leave_dt + 40 = now + 33
 run_scenario(
-    "Scenario 2 — 7 minutes late (LEAVE NOW!)",
+    "Scenario 2, 7 minutes late (LEAVE NOW!)",
     [fhwn_event(now + timedelta(minutes=33), 35)],
 )
 
 run_scenario(
-    "Scenario 3 — event in 1h43m + 1 birthday",
+    "Scenario 3, event in 1h43m + 1 birthday",
     [
         fhwn_event(now + timedelta(hours=1, minutes=43), 35),
         birthday_event("Anna", "Müller", 29),
@@ -95,7 +95,7 @@ run_scenario(
 )
 
 run_scenario(
-    "Scenario 4 — 7 min late + 2 birthdays",
+    "Scenario 4, 7 min late + 2 birthdays",
     [
         fhwn_event(now + timedelta(minutes=33), 35),
         birthday_event("Thomas", "Berger", 45),

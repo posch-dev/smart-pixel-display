@@ -41,7 +41,7 @@ from panels.now_playing.main import run_loop as np_run_loop
 
 MAC_ADDRESS     = config.get("device", "mac_address")
 DIRECT_CONNECT  = config.get("device", "direct_connect", False)
-RECONNECT_DELAY = config.get("device", "reconnect_delay", 5)
+RECONNECT_DELAY = config.get("expert", "reconnect_delay", 5)
 MAX_SLOTS       = 256
 BLE_SEND_TIMEOUT = 5
 _CLOCK_TICK     = 0.5
@@ -221,7 +221,7 @@ async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
 async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
     last_fired_reference = None
     while True:
-        refresh = config.get("verse_of_day", "refresh_interval", 30)
+        refresh = config.get("expert", "refresh_interval", 30)
         frame = await asyncio.to_thread(get_verse_frame)
         if frame:
             if _verse_reference and _verse_reference != last_fired_reference:
@@ -600,10 +600,10 @@ def _on_sigterm(signum, frame) -> None:
 
 
 if __name__ == "__main__":
-    if "--debug" in sys.argv or config.get("server", "debug_log", False):
+    if "--debug" in sys.argv or config.get("expert", "debug_log", False):
         log.set_debug(True)
     signal.signal(signal.SIGTERM, _on_sigterm)
-    port   = int(os.environ.get("PORT", config.get("server", "port", 5000)))
+    port   = int(os.environ.get("PORT", config.get("expert", "port", 12832)))
     panels = ", ".join(m for m in scheduler.MODES if config.get(m, "enabled", False)) or "none"
     api.bind_runtime(sys.modules[__name__])
     threading.Thread(target=api.run, kwargs={"port": port}, daemon=True).start()

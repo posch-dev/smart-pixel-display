@@ -442,8 +442,8 @@
   <div class="row">
     <div class="row-left"><div class="row-label">Accent Color</div></div>
     <div class="row-right" style="gap:8px;align-items:center">
-      <span id="accent-hex" class="color-hex">#87A878</span>
-      <input type="color" id="accent-pick" value="#87a878" oninput="previewAccent(this.value)" onchange="setAccent(this.value)" title="Accent color">
+      <span id="accent-hex" class="color-hex"></span>
+      <input type="color" id="accent-pick" oninput="previewAccent(this.value)" onchange="setAccent(this.value)" title="Accent color">
     </div>
   </div>
   <div class="row">
@@ -582,10 +582,10 @@
 <script src="vendor/gifenc.js"></script>
 <script src="vendor/mp4-muxer.js"></script>
 <script src="vendor/webm-muxer.js"></script>
-<script src="blueprint.js"></script>
-<script src="render.js"></script>
-<script src="gif.js"></script>
-<script src="export.js"></script>
-<script src="script.js"></script>
+<script src="lib/blueprint.js"></script>
+<script src="lib/export-render.js"></script>
+<script src="lib/export-gif.js"></script>
+<script src="lib/export.js"></script>
+<script src="pages/index.js"></script>
 </body>
 </html>

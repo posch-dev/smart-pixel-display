@@ -283,7 +283,7 @@ def _poll_loop() -> None:
         except Exception as e:
             log.error("poller", f"{e}")
 
-        configured = config.get("nowplaying", "poll_s")
+        configured = config.get("expert", "poll_s")
         limit = _POLL_LIMIT.get(_current_scrobbler or "lastfm", 1.0)
         default = _POLL_DEFAULT.get(_current_scrobbler or "lastfm", 1.0)
         sleep_s = max(configured, limit) if configured else default

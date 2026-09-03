@@ -1,0 +1,99 @@
+# smart pixel dashboard, configuration
+#
+# install.sh copies this file to config.toml on a fresh install and never touches
+# it again. The web ui writes config.toml, comments and order survive.
+#
+# Everything the web ui can reach lives in the panel sections below. What it
+# cannot reach sits in [expert] at the bottom and only changes by editing the
+# file. Two keys carry an EXPERT note where they stand, because the scheduler
+# looks them up by panel name and they cannot move.
+
+[device]
+mac_address     = "XX:XX:XX:XX:XX:XX"
+direct_connect  = false         # connect by address instead of scanning first
+brightness      = 85            # 1 to 100
+flip_vertical   = false         # flip top/bottom
+flip_horizontal = false         # mirror left/right
+# active_hours  = [6, 22]       # display on from 06:00 to 22:00, outside is a black screen
+                                # remove this line to always be on
+start_powered_off = false       # start black until powered on by hand
+after_hours_sleep_timer_enabled = false  # turn off again after N minutes when powered on outside active hours
+after_hours_sleep_timer_minutes = 10     # how many minutes that takes
+webhooks_enabled = false
+
+[clock]
+enabled        = true
+priority       = 1              # higher number wins over lower
+brightness     = 10             # 1 to 100
+color          = [0, 255, 0]    # RGB
+blink_interval = 2              # seconds per colon phase
+min_duration_s = 0              # EXPERT, not in the web ui. 0 = show until something with a higher priority triggers
+use_global_brightness = false
+use_global_preview    = true
+preview_mode          = "web"
+webhooks_enabled      = false
+
+[verse_of_day]
+enabled        = true
+priority       = 2
+brightness     = 100            # 1 to 100
+color          = [255, 255, 255]  # RGB
+min_duration_s = 120            # seconds to show before falling back
+probability    = 0.3            # 0.0 to 1.0, the chance per time window
+# active_hours = [0, 23]        # restrict to an hour range, e.g. [12, 14]. omit the line for all hours
+translation    = "bolls:ESV"
+use_global_brightness = false
+use_global_preview    = true
+preview_mode          = "web"
+webhooks_enabled      = false
+
+[nowplaying]
+enabled    = false              # needs last.fm or libre.fm credentials in .env
+priority   = 3
+brightness = 50                 # 1 to 100
+font       = 3                  # 1=PressStart2P  2=HIAIRP22  3=MinecraftStandard  4=pcsenior
+scrobbler  = "lastfm"           # lastfm | librefm
+min_duration_s = 0              # EXPERT, not in the web ui. 0 = show as long as music is detected
+use_global_brightness = true
+use_global_preview    = false
+preview_mode          = "pixel"
+webhooks_enabled      = false
+
+[dashboard]
+enabled        = true
+priority       = 4
+brightness     = 50             # 1 to 100
+min_duration_s = 3000           # seconds to stay active
+use_global_brightness = true
+auto_trigger_on_calendar  = true   # trigger the dashboard when a /calendar POST arrives
+auto_trigger_before_event = true   # switch on this many hours before departure
+hours_before_event        = 2.0    # departure is start minus travel
+grace_minutes             = 10     # minutes after departure, or after start without travel, to keep showing
+use_global_preview = true
+preview_mode       = "web"
+webhooks_enabled   = false
+
+[dashboard.weather]
+provider = "openmeteo"          # openmeteo | wttr | nws (USA only)
+units    = "metric"             # metric (°C) | imperial (°F)
+lat      = -48.876667           # Point Nemo, set this to where you are
+lon      = -123.393333
+# location = "New York"         # city name instead of lat/lon, only used when provider is wttr
+
+# ==========================================================
+# Expert / dev configs, not in the web ui
+# ==========================================================
+
+[expert]
+port      = 12832               # web ui and api port, takes a restart
+debug_log = false               # verbose log, takes effect on a running service
+
+reconnect_delay = 5             # seconds to wait before a BLE reconnect
+
+time_windows     = [[7, 11], [18, 25], [33, 41], [47, 56]]  # verse, minute ranges inside each hour where the roll happens
+refresh_interval = 30           # verse, seconds between re-sends, keeps the display awake
+
+slot_a  = 1                     # nowplaying, BLE image slot A, 0 to 254
+slot_b  = 2                     # nowplaying, BLE image slot B, 0 to 254
+chunk_s = 20                    # nowplaying, seconds between progress bar re-uploads
+poll_s  = 0.5                   # nowplaying, poll interval, lastfm min 0.25, librefm min 1.0

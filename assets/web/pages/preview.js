@@ -11,7 +11,7 @@ let pv = {follow: 'live', theme: null, accent: null, panels: {},
                ddate: true, ddiv: true, dextra: true, dwhen: true, dblink: true,
                dacce: true, dacct: true},
           dicon: null, dinfo: null, dpick: 'none', dhh: null, dmm: null,
-          np: [{auto: true, hex: '#87a878'}, {auto: true, hex: '#87a878'}],
+          np: [{auto: true, hex: DEFAULT_ACCENT}, {auto: true, hex: DEFAULT_ACCENT}],
           col: {}};
 
 // not saved on purpose, a page opened tomorrow should not still hold yesterday's song
@@ -577,7 +577,7 @@ async function initPreview() {
   if (window.innerWidth > PV_WIDE_PX) document.body.classList.add('menu-open');
   await loadSprite();
   setPvTheme(pv.theme || getCookie('spd_theme') || 'dark');
-  setPvAccent(pv.accent || getCookie('spd_accent') || '#87a878');
+  setPvAccent(pv.accent || getCookie('spd_accent') || DEFAULT_ACCENT);
   _applyPvPreviewMode(getCookie('spd_preview') || 'web');
   applyPvColOn();
   applyPvColors();

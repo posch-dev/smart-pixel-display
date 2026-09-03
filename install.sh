@@ -4,6 +4,8 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$REPO_DIR/.venv"
 SERVICE_NAME="smartpixeldashboard"
+CONFIG="$REPO_DIR/config.toml"
+CONFIG_TEMPLATE="$REPO_DIR/config.example.toml"
 TEMPLATE="$REPO_DIR/assets/system/${SERVICE_NAME}.service.template"
 TARGET="/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -25,6 +27,7 @@ command -v bluetoothctl >/dev/null 2>&1 || warn "bluetoothctl not found. You'll 
 
 [ -f "$REPO_DIR/startup.py" ]  || error "startup.py not found in $REPO_DIR"
 [ -f "$TEMPLATE" ]             || error "Service template not found at $TEMPLATE"
+[ -f "$CONFIG_TEMPLATE" ]      || error "Config template not found at $CONFIG_TEMPLATE"
 
 if [ -d "$VENV_DIR" ]; then
     info "Existing venv found at .venv/"
@@ -37,6 +40,13 @@ info "Installing dependencies ..."
 "$VENV_DIR/bin/pip" install --upgrade pip -q
 "$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt" -q
 info "Dependencies installed."
+
+if [ -f "$CONFIG" ]; then
+    info "Existing config found at config.toml, left untouched."
+else
+    cp "$CONFIG_TEMPLATE" "$CONFIG"
+    info "Config created from the template. Set your device MAC and location in config.toml."
+fi
 
 if [ ! -f "$REPO_DIR/.env" ]; then
     info "No .env file found. Optional, only needed for some panels (see README)."

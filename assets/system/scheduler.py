@@ -157,7 +157,7 @@ def tick() -> None:
         hour_ok = active_hours is None or active_hours[0] <= h <= active_hours[1]
 
         if hour_ok:
-            for i, (start, end) in enumerate(config.get("verse_of_day", "time_windows", [])):
+            for i, (start, end) in enumerate(config.get("expert", "time_windows", [])):
                 if start <= m <= end:
                     window_id = h * 100 + i
                     if window_id != _verse_last_window:

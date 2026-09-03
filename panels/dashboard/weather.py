@@ -137,7 +137,7 @@ _PROVIDERS = {"openmeteo": _openmeteo, "wttr": _wttr, "nws": _nws}
 def fetch_weather() -> dict:
     w        = config.get("dashboard", "weather", {})
     provider = w.get("provider", "openmeteo")
-    lat      = w.get("lat",      -48.876667)
+    lat      = w.get("lat",      -48.876667)   # Point Nemo, so a missing config is obvious
     lon      = w.get("lon",      -123.393333)
     location = w.get("location")
 
