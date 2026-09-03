@@ -10,7 +10,6 @@ import random
 import sys
 import time
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from pypixelcolor import AsyncClient
 
@@ -78,7 +77,6 @@ def stop_weather() -> None:
         log.info("weather", "stopped")
 
 W, H     = 128, 32
-LOCAL_TZ = ZoneInfo("Europe/Vienna")
 BG       = (0, 0, 0)
 
 C_GREEN      = (0, 255, 0)
@@ -305,7 +303,7 @@ def _today_event_info(now: datetime, events: list | None = None):
 
     def _end_dt(ev):
         try:
-            return datetime.fromisoformat(ev["end_time"]).astimezone(LOCAL_TZ)
+            return datetime.fromisoformat(ev["end_time"]).astimezone()
         except (ValueError, KeyError):
             return None
 
@@ -316,7 +314,7 @@ def _today_event_info(now: datetime, events: list | None = None):
             if ev.get("is_all_day") or ev.get("isAllDay", False):
                 continue
             try:
-                ev["_start_dt"] = datetime.fromisoformat(ev["start_time"]).astimezone(LOCAL_TZ)
+                ev["_start_dt"] = datetime.fromisoformat(ev["start_time"]).astimezone()
                 timed.append(ev)
             except (ValueError, KeyError):
                 pass
@@ -330,7 +328,7 @@ def _today_event_info(now: datetime, events: list | None = None):
             if end is not None and end < now:
                 continue
 
-            leave = calendar_store._leave_dt(ev, LOCAL_TZ)
+            leave = calendar_store._leave_dt(ev)
 
             if leave is not None:
                 # Has travel time → Mode 3 candidate
@@ -376,7 +374,7 @@ def _is_all_day(event: dict) -> bool:
 
 def layout_state(now: datetime | None = None, pick=None) -> dict:
     # pick is None for the panel's own choice, "none" for nothing, or an index
-    now = now or datetime.now(LOCAL_TZ)
+    now = now or datetime.now().astimezone()
     events = None
     if pick == "none":
         events = []
@@ -405,11 +403,11 @@ def event_window(index) -> dict | None:
         return None
     ev = events[index]
     try:
-        start = datetime.fromisoformat(ev["start_time"]).astimezone(LOCAL_TZ)
+        start = datetime.fromisoformat(ev["start_time"]).astimezone()
     except (ValueError, KeyError):
         return None
     try:
-        end = datetime.fromisoformat(ev["end_time"]).astimezone(LOCAL_TZ)
+        end = datetime.fromisoformat(ev["end_time"]).astimezone()
     except (ValueError, KeyError):
         end = None
     lead = timedelta(hours=float(config.get("dashboard", "hours_before_event", 2.0) or 0))
@@ -658,7 +656,7 @@ async def run_with_client(client: AsyncClient, clearing=None, ble_lock=None) -> 
     frame_count = 0
     while True:
         t_frame_start  = time.monotonic()
-        now            = datetime.now(LOCAL_TZ)
+        now            = datetime.now().astimezone()
         colon_on       = frame_count % 2 == 0
         leave_blink_on = not colon_on
         now_color      = C_PURPLE if frame_count % 2 == 0 else C_ORANGE
@@ -695,7 +693,7 @@ async def run() -> None:
                 print("[display] Connected.")
                 while True:
                     t_frame_start  = time.monotonic()
-                    now            = datetime.now(LOCAL_TZ)
+                    now            = datetime.now().astimezone()
                     colon_on       = frame_count % 2 == 0
                     leave_blink_on = not colon_on
                     now_color      = C_PURPLE if frame_count % 2 == 0 else C_ORANGE

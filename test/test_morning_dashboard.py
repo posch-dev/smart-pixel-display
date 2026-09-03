@@ -3,14 +3,13 @@ import random
 import sys
 import os
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "panels", "dashboard"))
 
 import calendar_store
 import weather as weather_mod
 
-LOCAL_TZ = ZoneInfo("Europe/Vienna")
+LOCAL_TZ = datetime.now().astimezone().tzinfo
 
 CONDITIONS = ["clear", "partly cloudy", "overcast", "rain", "thunderstorm", "fog", "snow", "drizzle"]
 

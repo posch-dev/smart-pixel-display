@@ -20,6 +20,7 @@ All notable changes to smart pixel display. Newest first.
 - Direct connect: A config switch connects by address instead of scanning first, for when the panel is being stubborn and sitting on a stale link.
 - Debug log: Verbose logging turns on from the config, from `--debug` or from `SPD_DEBUG`. You never have to touch the systemd unit for it.
 - Config template: `config.example.toml` ships with the repo and the installer builds your `config.toml` out of it.
+- Timezone: The dashboard reads the clock of the machine it runs on instead of a hardcoded Europe/Vienna, on Linux and on Windows alike. Set the zone with your OS, `timedatectl set-timezone` on a Pi, and the installer prints back what it found.
 - Panel order: Drag the panels around in the enable card to set their priority.
 - Dashboard API: The web UI asks the Pi what the dashboard would show at any minute of the day, so nobody has to write that maths a second time in JavaScript.
 

@@ -3,7 +3,6 @@
 import math
 import re
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 _BIRTHDAY_RE = re.compile(r"^(.+)'s (\d+)(?:st|nd|rd|th) Birthday$")
 
@@ -66,12 +65,12 @@ def get_birthdays() -> list[dict]:
     return _birthdays
 
 
-def _leave_dt(ev: dict, local_tz) -> datetime | None:
+def _leave_dt(ev: dict) -> datetime | None:
     travel = ev.get("_travel_minutes")
     if travel is None:
         return None
     try:
-        start_dt = datetime.fromisoformat(ev["start_time"]).astimezone(local_tz)
+        start_dt = datetime.fromisoformat(ev["start_time"]).astimezone()
         return start_dt - timedelta(minutes=travel)
     except (ValueError, KeyError):
         return None
@@ -81,20 +80,19 @@ def format_events() -> str:
     if not _events:
         return "=== CALENDAR (0 events) ===\n(none)"
 
-    local_tz = ZoneInfo("Europe/Vienna")
-    now = datetime.now(local_tz)
+    now = datetime.now().astimezone()
 
     timed = []
     for ev in _events:
         if not (ev.get("is_all_day") or ev.get("isAllDay", False)):
             try:
-                ev["_start_dt"] = datetime.fromisoformat(ev["start_time"]).astimezone(local_tz)
+                ev["_start_dt"] = datetime.fromisoformat(ev["start_time"]).astimezone()
                 timed.append(ev)
             except (ValueError, KeyError):
                 pass
     timed.sort(key=lambda e: e["_start_dt"])
 
-    next_ev = next((e for e in timed if _leave_dt(e, local_tz) is not None), None)
+    next_ev = next((e for e in timed if _leave_dt(e) is not None), None)
 
     lines = [f"=== CALENDAR ({len(_events)} events) ==="]
 
@@ -121,7 +119,7 @@ def format_events() -> str:
         lines.append(f"{prefix} {title} ({ev.get('calendar_name', '')})")
 
         if not is_all_day and ev is next_ev:
-            leave = _leave_dt(ev, local_tz)
+            leave = _leave_dt(ev)
             if leave is not None:
                 if leave > now:
                     leave_in = round((leave - now).total_seconds() / 60)

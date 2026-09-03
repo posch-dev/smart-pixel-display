@@ -3,7 +3,6 @@
 import binascii, io, os, sys, random
 import requests
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from PIL import Image, ImageSequence
 
 _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -74,7 +73,7 @@ import calendar_store
 import assets.system.config as _cfg
 from panels.dashboard.display import render_frame as dash_render, C_PURPLE, C_ORANGE
 
-LOCAL_TZ = ZoneInfo("Europe/Vienna")
+LOCAL_TZ = datetime.now().astimezone().tzinfo
 
 WEATHERS_METRIC = {
     "sunny":       {"temp_now": 22, "temp_high": 26, "temp_low": 14, "condition": "clear"},

@@ -10,7 +10,6 @@ import threading
 import binascii
 import time
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw
 from pypixelcolor import AsyncClient
 
@@ -274,9 +273,6 @@ async def _nowplaying_watcher() -> None:
         await asyncio.sleep(1)
 
 
-_LOCAL_TZ = ZoneInfo("Europe/Vienna")
-
-
 async def _dashboard_event_watcher() -> None:
     triggered_keys: set = set()
     while True:
@@ -291,7 +287,7 @@ async def _dashboard_event_watcher() -> None:
 
         hours_before = config.get("dashboard", "hours_before_event", 2.0)
         grace_min = config.get("dashboard", "grace_minutes", 10)
-        now = datetime.now(_LOCAL_TZ)
+        now = datetime.now().astimezone()
 
         any_active = False
         events = calendar_store.get_events()
@@ -299,7 +295,7 @@ async def _dashboard_event_watcher() -> None:
             if ev.get("is_all_day") or ev.get("isAllDay", False):
                 continue
             try:
-                start_dt = datetime.fromisoformat(ev["start_time"]).astimezone(_LOCAL_TZ)
+                start_dt = datetime.fromisoformat(ev["start_time"]).astimezone()
             except (ValueError, KeyError):
                 continue
 

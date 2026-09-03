@@ -12,6 +12,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 
 import tomlkit
 
@@ -221,6 +222,12 @@ def _ask_dashboard(doc):
     weather["lon"] = _ask_float("Longitude, e.g. -123.393333 (Point Nemo)", weather["lon"])
     print(f"{DIM}  Calendar events arrive from an iPhone shortcut posting to /calendar.{RESET}")
     print(f"{DIM}  Ready made shortcuts: {SHORTCUTS_REPO}{RESET}")
+
+
+def _local_time():
+    # the panel follows the clock of this machine, so show what that is
+    now = datetime.now().astimezone()
+    return f"{now:%Y-%m-%d %H:%M} (UTC{now:%z})"
 
 
 def _lan_ip():
@@ -463,6 +470,7 @@ def _install(args):
     if doc is not None:
         print(f"    display     {mac or 'not set'}")
         print(f"    port        {port}")
+        print(f"    time        {_local_time()}")
         for section, enabled in panels.items():
             print(f"    {section:<14}{'on' if enabled else 'off'}")
         print(f"    config      {CONFIG}")
