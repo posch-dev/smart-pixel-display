@@ -182,3 +182,7 @@ Ready made iPhone shortcuts that talk to this API live in [posch-dev/apple-short
 ## License
 
 GPL-3.0 - any software that uses or distributes this code must also be released under the same license.
+
+Icons come from two sets: [pixelarticons](https://github.com/halfmage/pixelarticons) under MIT,
+and Streamline Pixel by [Streamline](https://streamlinehq.com) under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
