@@ -12,7 +12,7 @@ import assets.system.config as config
 import assets.system.log as log
 from assets.system.version import VERSION
 
-RELEASES_API   = "https://api.github.com/repos/posch-dev/smart-pixel-dashboard/releases/latest"
+RELEASES_API   = "https://api.github.com/repos/posch-dev/smart-pixel-display/releases/latest"
 CHECK_INTERVAL = 86400
 
 _root       = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -31,7 +31,7 @@ def is_newer(tag: str) -> bool:
 
 def fetch_latest() -> tuple[str, str]:
     request = urllib.request.Request(RELEASES_API, headers={"Accept": "application/vnd.github+json",
-                                                            "User-Agent": "smart-pixel-dashboard"})
+                                                            "User-Agent": "smart-pixel-display"})
     with urllib.request.urlopen(request, timeout=10) as answer:
         release = json.load(answer)
     return release.get("tag_name", ""), release.get("html_url", "")

@@ -1,10 +1,8 @@
 # Changelog
 
-All notable changes to smart pixel dashboard. Newest first.
+All notable changes to smart pixel display. Newest first.
 
 ## v1.3.0 - unreleased
-
-The one where the web UI grew up.
 
 ### Added
 
@@ -32,7 +30,7 @@ The one where the web UI grew up.
 - Logging: Every line goes through one module with levels and tags, so `journalctl -p err` actually filters something.
 - Config location: `config.toml` sits in the repo root, stays out of git, and everything the web UI cannot reach lives in an `[expert]` block at the bottom.
 - Default port: The web UI and the API listen on 12832 unless you say otherwise.
-- Name: The header says Smart Pixel Display.
+- Name: The project is smart pixel display now, not smart pixel dashboard. The systemd unit is `smartpixeldisplay.service` and the Windows task is SmartPixelDisplay; the installer removes the old ones on the way past. The dashboard panel keeps its own name.
 
 ### Fixed
 
@@ -85,7 +83,7 @@ The one where the web UI grew up.
 - Webhook template variables for Now Playing. The `on_song_change` body and URL support `{{accent1_hex}}`, `{{accent1_rgb}}`, `{{accent1_r}}`, `{{accent1_g}}`, `{{accent1_b}}`, `{{accent1_hsv}}`, `{{title}}`, `{{artist}}`, `{{album}}`, same thing for accent2 and accent3. There's also full-brightness variants (`{{accent1_full_hex}}`, `{{accent1_full_rgb}}`, `{{accent1_full_r/g/b}}`) that keep the same hue and saturation but at 100% value, for stuff like WLED strips that handle brightness on their own.
 - Webhook editor in the web UI. It's a modal with method dropdown (GET/POST/PUT/PATCH/DELETE), URL field, key-value header rows you can add and remove like in iOS Shortcuts, and a body textarea that only shows for methods that actually have a body. Now Playing gets a collapsible "Variables" section with clickable buttons that insert the variable at your cursor position.
 - Active hours grace period. When active hours end, the display spends 2 minutes sending a black screen every 10 seconds to make sure the panel is actually off before going into the sleep loop.
-- Install script. `./install.sh` checks for Python 3.11+, python3-venv, and Bluetooth, creates a `.venv` inside the repo, installs everything there, and sets up the `smartpixeldashboard` systemd service. No more `pip install --break-system-packages`.
+- Install script. `./install.sh` checks for Python 3.11+, python3-venv, and Bluetooth, creates a `.venv` inside the repo, installs everything there, and sets up the `smartpixeldisplay` systemd service. No more `pip install --break-system-packages`.
 - Disabled panels are greyed out in the Trigger tab now with a "disabled" badge, and you can't click their inputs.
 - Event grace period. Dashboard panels triggered by upcoming calendar events now stay visible past the departure time (or event start if there's no travel time) for a configurable grace period.
 
@@ -119,7 +117,7 @@ The one where the web UI grew up.
 
 ### Docs
 
-- README setup section rewritten with clone + `./install.sh` workflow, venv instructions, and correct systemd service name (`smartpixeldashboard`).
+- README setup section rewritten with clone + `./install.sh` workflow, venv instructions, and correct systemd service name (`smartpixeldisplay`).
 - README documents webhooks now, with an asterisk noting `on_song_change` is Now Playing only.
 - API endpoint list has all endpoints now: `/display/power`, `GET /mode`, `GET /calendar`, `POST /dashboard/trigger`.
 - Now Playing docs updated with webhooks section, template variables, full-brightness variants, corrected font default (3 instead of 1).

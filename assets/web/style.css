@@ -217,6 +217,12 @@ header {
 /* a flex item will not shrink under its content unless it is told to, and without
    that the widest row in the pane pushes the whole page sideways */
 .set-pane, .set-pane > .card { min-width: 0; }
+.update-note { margin-top: 14px; margin-bottom: 14px; text-align: center; font-size: 11px; color: var(--muted-hi); }
+.update-head { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.update-note a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.update-run { margin-top: 6px; font-size: 10px; color: var(--muted); }
+.update-run code { font-family: inherit; color: var(--muted-hi); }
+
 .about { margin-top: 6px; padding-bottom: 4px; text-align: center; font-size: 10px; color: var(--muted); line-height: 1.7; }
 .about-name { font-size: 11px; font-weight: 600; color: var(--muted-hi); }
 .about a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }

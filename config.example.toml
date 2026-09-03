@@ -1,4 +1,4 @@
-# smart pixel dashboard, configuration
+# smart pixel display, configuration
 #
 # The installer writes config.toml from this file on a fresh install and never
 # touches an existing one. The web ui writes config.toml, comments and order

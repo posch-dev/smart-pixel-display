@@ -22,10 +22,12 @@ ROOT            = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", 
 CONFIG          = os.path.join(ROOT, "config.toml")
 CONFIG_TEMPLATE = os.path.join(ROOT, "config.example.toml")
 ENV             = os.path.join(ROOT, ".env")
-SERVICE_NAME    = "smartpixeldashboard"
+SERVICE_NAME    = "smartpixeldisplay"
 UNIT_TEMPLATE   = os.path.join(ROOT, "assets", "system", f"{SERVICE_NAME}.service.template")
 UNIT_TARGET     = f"/etc/systemd/system/{SERVICE_NAME}.service"
-TASK_NAME       = "SmartPixelDashboard"
+TASK_NAME       = "SmartPixelDisplay"
+OLD_SERVICE     = "smartpixeldashboard"
+OLD_TASK        = "SmartPixelDashboard"
 SHORTCUTS_REPO  = "https://github.com/posch-dev/apple-shortcuts"
 SCAN_SECONDS    = 6.0
 
@@ -250,7 +252,18 @@ def _run(command, check=True):
     return result.returncode == 0
 
 
+def _drop_old_unit():
+    old_target = f"/etc/systemd/system/{OLD_SERVICE}.service"
+    if not os.path.exists(old_target):
+        return
+    prefix = [] if _is_admin() else ["sudo"]
+    _run(prefix + ["systemctl", "disable", "--now", OLD_SERVICE], check=False)
+    _run(prefix + ["rm", "-f", old_target], check=False)
+    info(f"Removed the old {OLD_SERVICE} unit.")
+
+
 def _install_unit():
+    _drop_old_unit()
     user = os.environ.get("SUDO_USER") or os.environ.get("USER") or "pi"
     with open(UNIT_TEMPLATE, encoding="utf-8") as handle:
         unit = handle.read().replace("__USER__", user).replace("__WORKDIR__", ROOT)
@@ -267,6 +280,7 @@ def _install_unit():
 
 
 def _install_task():
+    _run(["schtasks", "/delete", "/f", "/tn", OLD_TASK], check=False)
     trigger = "onstart" if _is_admin() else "onlogon"
     command = f'"{PYTHON}" "{os.path.join(ROOT, "startup.py")}"'
     created = _run(["schtasks", "/create", "/f", "/tn", TASK_NAME, "/sc", trigger, "/tr", command])
@@ -306,10 +320,10 @@ def _wait_for_api(port, seconds=30):
 
 def _start_commands():
     if IS_WINDOWS:
-        return (f'  "%USERPROFILE%\\smart-pixel-dashboard\\.venv\\Scripts\\python.exe" '
-                f'"%USERPROFILE%\\smart-pixel-dashboard\\startup.py"',
+        return (f'  "%USERPROFILE%\\smart-pixel-display\\.venv\\Scripts\\python.exe" '
+                f'"%USERPROFILE%\\smart-pixel-display\\startup.py"',
                 r"  .\.venv\Scripts\python.exe startup.py")
-    return ("  ~/smart-pixel-dashboard/.venv/bin/python ~/smart-pixel-dashboard/startup.py",
+    return ("  ~/smart-pixel-display/.venv/bin/python ~/smart-pixel-display/startup.py",
             "  ./.venv/bin/python startup.py")
 
 
@@ -483,7 +497,7 @@ def _install(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="install", description="smart pixel dashboard setup")
+    parser = argparse.ArgumentParser(prog="install", description="smart pixel display setup")
     parser.add_argument("--yes", "-y", action="store_true", help="take every default, ask nothing")
     parser.add_argument("--autostart", action="store_true", help="set up autostart without asking")
     parser.add_argument("--no-autostart", action="store_true", help="skip autostart")

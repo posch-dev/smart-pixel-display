@@ -1,4 +1,4 @@
-# Smart Pixel Dashboard
+# Smart Pixel Display
 
 A smart dashboard display for 128x32 RGB LED matrix panels. It runs on anything that has Python and Bluetooth (e.g Rasperry Pi Zero 2 w). The display itself just needs to support BLE and the pypixelcolor protocol (e.g. iPixel panel).
 
@@ -43,12 +43,12 @@ The scheduler handles switching automatically. Now Playing triggers when it dete
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/posch-dev/smart-pixel-dashboard.git
-cd smart-pixel-dashboard
+git clone https://github.com/posch-dev/smart-pixel-display.git
+cd smart-pixel-display
 ./install.sh
 ```
 
-The install script creates a `.venv` in the repo, installs all dependencies, and sets up a systemd service (`smartpixeldashboard`).
+The install script creates a `.venv` in the repo, installs all dependencies, and sets up a systemd service (`smartpixeldisplay`).
 
 If you prefer doing it manually:
 ```bash
@@ -109,11 +109,11 @@ python panels/<panel>/main.py
 If you ran `./install.sh`, the systemd service is already set up:
 
 ```bash
-sudo systemctl start smartpixeldashboard      # Start
-sudo systemctl status smartpixeldashboard     # Check status
-sudo systemctl restart smartpixeldashboard    # Restart
-sudo systemctl stop smartpixeldashboard       # Stop
-journalctl -u smartpixeldashboard -f          # Live logs
+sudo systemctl start smartpixeldisplay      # Start
+sudo systemctl status smartpixeldisplay     # Check status
+sudo systemctl restart smartpixeldisplay    # Restart
+sudo systemctl stop smartpixeldisplay       # Stop
+journalctl -u smartpixeldisplay -f          # Live logs
 ```
 
 ## Configuration

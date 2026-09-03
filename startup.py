@@ -607,6 +607,6 @@ if __name__ == "__main__":
     panels = ", ".join(m for m in scheduler.MODES if config.get(m, "enabled", False)) or "none"
     api.bind_runtime(sys.modules[__name__])
     threading.Thread(target=api.run, kwargs={"port": port}, daemon=True).start()
-    log.info("service", f"smart pixel dashboard {VERSION} starting, panels: {panels}")
+    log.info("service", f"smart pixel display {VERSION} starting, panels: {panels}")
     log.info("web", f"web ui on http://0.0.0.0:{port}")
     asyncio.run(run())

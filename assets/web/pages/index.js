@@ -1265,7 +1265,7 @@ async function init() {
   }
 }
 
-const REPO_URL = 'https://github.com/posch-dev/smart-pixel-dashboard';
+const REPO_URL = 'https://github.com/posch-dev/smart-pixel-display';
 
 // the about block stays blank until the pi answers, a wrong version is worse than none
 function showVersion() {
@@ -1288,8 +1288,7 @@ function showUpdate() {
     _runningVersion = d.version || '';
     if (!d.newer) return;
     const shown = d.url ? '<a href="' + d.url + '" target="_blank" rel="noopener">' + d.latest + '</a>' : d.latest;
-    document.getElementById('update-line').innerHTML =
-      'Newer version ' + shown + ' available, you run v' + d.version + '.';
+    document.getElementById('update-line').innerHTML = 'Newer version ' + shown + ' available.';
     document.getElementById('update-cmd').textContent = d.command;
     document.getElementById('update-btn').hidden = !d.can_install;
     card.hidden = false;

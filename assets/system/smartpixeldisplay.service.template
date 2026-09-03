@@ -1,5 +1,5 @@
 [Unit]
-Description=Smart Pixel Dashboard
+Description=Smart Pixel Display
 After=bluetooth.target network-online.target
 Wants=network-online.target
 
