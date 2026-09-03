@@ -1,7 +1,7 @@
 'use strict';
 
 const MODES = ['clock','verse_of_day','nowplaying','dashboard'];
-const LABELS = { clock:'Clock', verse_of_day:'Verse of Day', nowplaying:'NowPlaying', dashboard:'Dashboard' };
+const LABELS = { clock:'Clock', verse_of_day:'Verse', nowplaying:'NowPlaying', dashboard:'Dashboard' };
 const MODULE_PREFIX = { clock:'cl', verse_of_day:'v', nowplaying:'np', dashboard:'md' };
 const TRIG_ICONS = { clock:'#ico-clock', verse_of_day:'#ico-cross', nowplaying:'#ico-music', dashboard:'#ico-calendar' };
 const PANEL_KEY = { clock:'clock', verse_of_day:'verse', nowplaying:'np', dashboard:'dash' };
@@ -29,10 +29,60 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 // 'pixel' paints the tile in the colours the matrix uses, 'web' in the ui accent
 let _previewMode = 'web';
 
+let _activePreview = 'web';
+
 function _applyPreviewMode(mode) {
   _previewMode = mode;
+  document.documentElement.dataset.preview = mode;
+  applyActivePreview(_bpMode);
   document.getElementById('prev-web')?.classList.toggle('on', mode === 'web');
   document.getElementById('prev-pixel')?.classList.toggle('on', mode === 'pixel');
+}
+
+// a panel may opt out of the global choice and carry its own
+function previewModeFor(mode) {
+  const c = cfg[mode];
+  if (c && c.use_global_preview === false) return c.preview_mode || _previewMode;
+  return _previewMode;
+}
+
+// only the blueprint follows the panel, the rest of the ui stays on the device choice
+function applyActivePreview(mode) {
+  _activePreview = previewModeFor(mode);
+  const bp = document.getElementById('home-blueprint');
+  if (bp) bp.dataset.preview = _activePreview;
+}
+
+function _paintPreviewRow(mode) {
+  const pre = MODULE_PREFIX[mode];
+  const c = cfg[mode] || {};
+  const useGlobal = c.use_global_preview ?? true;
+  const which = c.preview_mode || _previewMode;
+  const box = document.getElementById(pre + '_prev_row');
+  if (box) box.classList.toggle('global', useGlobal);
+  const label = document.getElementById(pre + '_prev_label');
+  if (label) label.textContent = useGlobal ? 'Global' : 'Local';
+  const toggle = document.getElementById(pre + '_use_global_preview');
+  if (toggle) toggle.checked = useGlobal;
+  document.getElementById(pre + '_prev_web')?.classList.toggle('on', which === 'web');
+  document.getElementById(pre + '_prev_pixel')?.classList.toggle('on', which === 'pixel');
+}
+
+function setPanelPreview(mode, which) {
+  cfg[mode] = cfg[mode] || {};
+  cfg[mode].preview_mode = which;
+  _paintPreviewRow(mode);
+  applyActivePreview(_bpMode || mode);
+  save(mode, 'preview_mode', which);
+}
+
+function togglePanelPreview(mode, useGlobal) {
+  cfg[mode] = cfg[mode] || {};
+  cfg[mode].use_global_preview = useGlobal;
+  if (!useGlobal && !cfg[mode].preview_mode) cfg[mode].preview_mode = _previewMode;
+  _paintPreviewRow(mode);
+  applyActivePreview(_bpMode || mode);
+  save(mode, 'use_global_preview', useGlobal);
 }
 
 function setPreviewMode(mode) {
@@ -106,19 +156,38 @@ function hslToRgb(h, s, l) {
   return [hue(h + 1 / 3), hue(h), hue(h - 1 / 3)].map(v => Math.round(v * 255));
 }
 
+function _accentLegible(h, s, l) {
+  if (l < 0 || l > 1) return false;
+  const lum = _luminance(hslToRgb(h, s, l));
+  return _contrast(lum, LUM_LIGHT_CARD) >= ACCENT_MIN_ON_LIGHT
+      && _contrast(lum, LUM_DARK_CARD) >= ACCENT_MIN_ON_DARK;
+}
+
 function clampAccent(hex) {
   const [h, s, l] = rgbToHsl(hexToRgb(hex));
   let best = null, bestDist = Infinity;
   // hue and saturation stay, only lightness moves into the legible band
   for (let i = 0; i <= 100; i++) {
     const cand = i / 100;
-    const lum = _luminance(hslToRgb(h, s, cand));
-    if (_contrast(lum, LUM_LIGHT_CARD) < ACCENT_MIN_ON_LIGHT) continue;
-    if (_contrast(lum, LUM_DARK_CARD) < ACCENT_MIN_ON_DARK) continue;
+    if (!_accentLegible(h, s, cand)) continue;
     const d = Math.abs(cand - l);
     if (d < bestDist) { bestDist = d; best = cand; }
   }
   return best === null ? hex : rgbToHex(hslToRgb(h, s, best));
+}
+
+// lighter by preference, darker when lighter would leave the legible band
+function accentVariant(hex, delta) {
+  const [h, s, l] = rgbToHsl(hexToRgb(hex));
+  for (const cand of [l + delta, l - delta]) {
+    if (_accentLegible(h, s, cand)) return rgbToHex(hslToRgb(h, s, cand));
+  }
+  return hex;
+}
+
+function complementAccent(hex) {
+  const [h, s, l] = rgbToHsl(hexToRgb(hex));
+  return clampAccent(rgbToHex(hslToRgb((h + 0.5) % 1, s, l)));
 }
 
 function previewAccent(hex) {
@@ -126,6 +195,8 @@ function previewAccent(hex) {
   const root = document.documentElement;
   root.style.setProperty('--accent', hex);
   root.style.setProperty('--accent-d', `rgba(${r},${g},${b},.12)`);
+  root.style.setProperty('--accent-c', complementAccent(hex));
+  root.style.setProperty('--accent-hd', accentVariant(hex, 0.22));
   const hexLabel = document.getElementById('accent-hex');
   if (hexLabel) hexLabel.textContent = hex.toUpperCase();
 }
@@ -186,7 +257,8 @@ function buildPanelIcons() {
   const bar = document.getElementById('panel-icons');
   if (!bar) return;
   bar.innerHTML = '';
-  MODES.filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true).forEach(m => {
+  // least important on the left, so the right end is what matters most
+  modesByPriority().reverse().filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true).forEach(m => {
     const b = document.createElement('button');
     b.className = 'panel-ico';
     b.dataset.panel = PANEL_KEY[m];
@@ -198,28 +270,110 @@ function buildPanelIcons() {
   updatePanelIcons(statusData.active_mode);
 }
 
+// the list runs top down from the most important panel
+function modesByPriority() {
+  return [...MODES].sort((a, b) => (cfg[b]?.priority ?? 0) - (cfg[a]?.priority ?? 0));
+}
+
 function buildEnabledList() {
   const list = document.getElementById('panel-enabled-list');
   if (!list) return;
-  list.innerHTML = MODES.map(m => {
+  list.innerHTML = modesByPriority().map(m => {
     const on = cfg[m] ? (cfg[m].enabled ?? true) : true;
     return `<div class="prow${on ? '' : ' off'}" data-mode="${m}">
+      <svg class="ico prow-grip"><use href="#ico-grip"/></svg>
       <svg class="ico prow-ico"><use href="${TRIG_ICONS[m]}"/></svg>
       <div class="prow-text">
         <div class="prow-name">${LABELS[m]}</div>
         <div class="row-sub">${PANEL_DESC[m]}</div>
       </div>
+      <div class="prow-prio"></div>
       <label class="toggle"><input type="checkbox" ${on ? 'checked' : ''}
         onchange="toggleEnabled('${m}',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
     </div>`;
   }).join('');
+  paintPrioLabels();
+  list.querySelectorAll('.prow-grip').forEach(grip => {
+    grip.addEventListener('pointerdown', e => gripDown(e, grip.closest('.prow')));
+  });
+}
+
+const PRIO_LABELS = {4: 'Ultra', 3: 'High', 2: 'Medium', 1: 'Low'};
+
+function paintPrioLabels() {
+  const rows = [...document.querySelectorAll('#panel-enabled-list .prow')];
+  rows.forEach((row, i) => {
+    const prio = rows.length - i;
+    row.querySelector('.prow-prio').textContent = PRIO_LABELS[prio] ?? prio;
+  });
+}
+
+// pointer based, because HTML5 drag never fires on touch
+let _dragRow = null, _dragY = 0, _dragMoved = 0;
+
+function gripDown(e, row) {
+  e.preventDefault();
+  _dragRow = row; _dragY = e.clientY; _dragMoved = 0;
+  row.classList.add('dragging');
+  e.target.setPointerCapture?.(e.pointerId);
+  e.target.addEventListener('pointermove', gripMove);
+  e.target.addEventListener('pointerup', gripUp, {once: true});
+  e.target.addEventListener('pointercancel', gripUp, {once: true});
+}
+
+function gripMove(e) {
+  if (!_dragRow) return;
+  _dragMoved += e.clientY - _dragY;
+  _dragY = e.clientY;
+  _dragRow.style.transform = `translateY(${_dragMoved}px)`;
+  const box = _dragRow.getBoundingClientRect();
+  const mid = box.top + box.height / 2;
+  const prev = _dragRow.previousElementSibling;
+  const next = _dragRow.nextElementSibling;
+  // swapping at the neighbour midpoint keeps the finger over the row it moves
+  if (prev && mid < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
+    _dragRow.parentNode.insertBefore(_dragRow, prev);
+    _dragMoved += prev.offsetHeight;
+    paintPrioLabels();
+  } else if (next && mid > next.getBoundingClientRect().top + next.offsetHeight / 2) {
+    _dragRow.parentNode.insertBefore(next, _dragRow);
+    _dragMoved -= next.offsetHeight;
+    paintPrioLabels();
+  }
+  _dragRow.style.transform = `translateY(${_dragMoved}px)`;
+}
+
+async function gripUp(e) {
+  if (!_dragRow) return;
+  e.target.removeEventListener('pointermove', gripMove);
+  _dragRow.classList.remove('dragging');
+  _dragRow.style.transform = '';
+  _dragRow = null;
+  await savePriorityOrder();
+}
+
+// top row takes the highest number, the scheduler reads bigger as more important
+async function savePriorityOrder() {
+  const rows = [...document.querySelectorAll('#panel-enabled-list .prow')];
+  for (let i = 0; i < rows.length; i++) {
+    const mode = rows[i].dataset.mode;
+    const prio = rows.length - i;
+    if (cfg[mode]?.priority === prio) continue;
+    cfg[mode] = cfg[mode] || {};
+    cfg[mode].priority = prio;
+    await save(mode, 'priority', prio);
+  }
+  buildPanelIcons();
+  buildPanelGrid();
 }
 
 function updatePanelIcons(activeMode) {
   const map = {clock:'clock', verse_of_day:'verse', nowplaying:'np', dashboard:'dash'};
   const panel = map[activeMode] || activeMode;
   document.querySelectorAll('.panel-ico').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.panel === panel);
+    const on = btn.dataset.panel === panel;
+    btn.classList.toggle('manual', on && _userDriving(activeMode));
+    syncPulse(btn, btn.classList.toggle('active', on && !_userDriving(activeMode)));
   });
 }
 
@@ -287,11 +441,19 @@ function tickHeaderClock() {
   el.textContent = _uptimeAt ? fmtUptime(_uptimeBase + (Date.now() - _uptimeAt) / 1000) : '\u2014';
 }
 
-function paintPill() {
+function paintLink() {
+  const clearing = _linkUp && !!statusData.clearing;
   const pill = document.getElementById('status-pill');
-  if (!pill) return;
-  pill.classList.toggle('offline', !_linkUp);
-  pill.classList.toggle('clearing', _linkUp && !!statusData.clearing);
+  if (pill) {
+    pill.classList.toggle('offline', !_linkUp);
+    pill.classList.toggle('clearing', clearing);
+  }
+  // the power ring is the status dot now: green up, blue clearing, red down
+  const btn = document.getElementById('power-btn');
+  if (btn) {
+    btn.classList.toggle('down', !_linkUp);
+    btn.classList.toggle('clearing', clearing);
+  }
 }
 
 function updatePowerBtn() {
@@ -334,21 +496,6 @@ function toggleGrace(on) {
   const row = document.getElementById('md_grace_row');
   if (row) row.style.display = on ? 'flex' : 'none';
   save('dashboard', 'grace_minutes', on ? (+document.getElementById('md_grace_minutes').value || 10) : 0);
-}
-
-async function savePriority(mode, newPrio) {
-  const oldPrio = cfg[mode]?.priority;
-  const conflict = MODES.find(m => m !== mode && cfg[m]?.priority === newPrio);
-  if (conflict && oldPrio !== undefined && oldPrio !== newPrio) {
-    cfg[conflict] = cfg[conflict] || {};
-    cfg[conflict].priority = oldPrio;
-    await save(conflict, 'priority', oldPrio);
-    document.getElementById('prio-sel-' + conflict).value = oldPrio;
-  }
-  cfg[mode] = cfg[mode] || {};
-  cfg[mode].priority = newPrio;
-  await save(mode, 'priority', newPrio);
-  document.getElementById('prio-sel-' + mode).value = newPrio;
 }
 
 async function save(section, key, value) {
@@ -400,6 +547,22 @@ async function setManual(mode, on) {
   loadStatus();
 }
 
+function updateModeBtn(auto) {
+  const btn = document.getElementById('mode-btn');
+  if (!btn) return;
+  btn.classList.toggle('auto', auto);
+  btn.classList.toggle('manual', !auto);
+  btn.title = auto ? 'Scheduler, click to hold the current panel' : 'Manual, click to hand back to the scheduler';
+}
+
+// from the header the override latches whatever is on screen right now
+async function toggleAutoMode() {
+  const auto = manuals.size === 0 && Object.keys(timeds).length === 0;
+  if (!auto) return resetAll();
+  const mode = statusData.active_mode;
+  if (mode) await setManual(mode, true);
+}
+
 async function resetAll() {
   for (const mode of MODES) {
     manuals.delete(mode);
@@ -407,7 +570,7 @@ async function resetAll() {
     syncTriggerControls(mode);
   }
   await fetch('/mode/reset', {method: 'POST'});
-  toast('All triggers reset — scheduler takes over');
+  toast('All triggers reset, scheduler takes over');
   updateTriggerUI(); loadStatus();
 }
 
@@ -419,7 +582,8 @@ function buildPanelGrid() {
   const grid = document.getElementById('panel-grid');
   if (!grid) return;
   grid.innerHTML = '';
-  MODES.filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true).forEach(mode => {
+  // reading order is priority order, highest top left
+  modesByPriority().filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true).forEach(mode => {
     const tile = document.createElement('button');
     tile.className = 'pgrid-tile';
     tile.dataset.mode = mode;
@@ -523,9 +687,10 @@ const BP_TEMPLATES = {
            '<div class="bp-cover-ph" id="bp-cover-ph"><svg class="ico"><use href="#ico-music"/></svg></div>' +
          '</div>' +
          '<div class="bp-np-meta">' +
-           '<div class="bp-np-head"><div class="bp-track" id="bp-track">Nothing playing</div>' +
-           '<div class="bp-album" id="bp-album"></div></div>' +
-           '<div class="bp-sub bp-artist" id="bp-artist"></div>' +
+           '<div class="bp-track bp-scroll" id="bp-track"><span>Nothing playing</span></div>' +
+           '<div class="bp-np-row">' +
+             '<div class="bp-sub bp-artist bp-scroll" id="bp-artist"><span></span></div>' +
+             '<div class="bp-album bp-scroll" id="bp-album"><span></span></div></div>' +
            '<div class="bp-bar" id="bp-bar"><div class="bp-bar-fill" id="bp-progress"></div>' +
            '<span class="bp-bar-head"></span></div>' +
            '<div class="bp-times"><span id="bp-elapsed">0:00</span><span id="bp-total">0:00</span></div>' +
@@ -548,6 +713,7 @@ function updateBlueprint(data) {
   const el = document.getElementById('blueprint-content');
   if (!el) return;
   const mode = data.active_mode || 'clock';
+  applyActivePreview(mode);
   if (mode !== _bpMode) {
     _bpMode = mode;
     el.innerHTML = BP_TEMPLATES[mode] || '';
@@ -560,17 +726,18 @@ function updateBlueprint(data) {
 }
 
 function applyBlinkRate() {
-  const colon = document.getElementById('bp-colon');
-  if (!colon) return;
+  const bp = document.getElementById('home-blueprint');
+  if (!bp) return;
   const interval = cfg.clock?.blink_interval ?? 1;
-  if (!interval) { colon.style.animation = 'none'; colon.style.opacity = '1'; return; }
-  colon.style.animation = `bp-blink ${interval * 2}s steps(1, end) infinite`;
+  // the rate lives on the container so a template rebuild cannot drop it
+  bp.classList.toggle('no-blink', !interval);
+  bp.style.setProperty('--bp-blink-s', `${(interval || 1) * 2}s`);
 }
 
 function _tint(id, prop, rgb) {
   const el = document.getElementById(id);
   if (!el) return;
-  if (_previewMode === 'pixel' && Array.isArray(rgb) && rgb.length === 3) {
+  if (_activePreview === 'pixel' && Array.isArray(rgb) && rgb.length === 3) {
     el.style.setProperty(prop, `rgb(${rgb.join(',')})`);
   } else {
     el.style.removeProperty(prop);
@@ -616,11 +783,28 @@ function fmtClock(s) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+// the panel runs the bar against 3:20 when the source gives no length, so does the preview
+const NP_FALLBACK_DURATION_S = 200;
+
+// a line only travels the distance it actually overflows, so short ones stay still
+function _bpScroll(id, text) {
+  const el = document.getElementById(id);
+  const span = el && el.firstElementChild;
+  if (!span) return;
+  if (span.textContent !== text) span.textContent = text;
+  const over = span.offsetWidth - el.clientWidth;
+  el.classList.toggle('on', over > 1);
+  if (over > 1) {
+    el.style.setProperty('--shift', -over + 'px');
+    el.style.setProperty('--dur', (7 + over / 12).toFixed(1) + 's');
+  }
+}
+
 function _bpNowPlaying(np) {
   const playing = !!(np && np.playing && np.title);
-  _bpText('bp-track', (np && np.title) || 'Nothing playing');
-  _bpText('bp-artist', (np && np.artist) || '');
-  _bpText('bp-album', (np && np.album) || '');
+  _bpScroll('bp-track', (np && np.title) || 'Nothing playing');
+  _bpScroll('bp-artist', (np && np.artist) || '');
+  _bpScroll('bp-album', (np && np.album) || '');
 
   const img = document.getElementById('bp-cover');
   const ph = document.getElementById('bp-cover-ph');
@@ -643,7 +827,7 @@ function _bpNowPlaying(np) {
   // the same three colours the matrix pulls out of the cover
   const wrap = document.getElementById('bp-np');
   if (wrap) {
-    const acc = _previewMode === 'pixel' && np && np.accents;
+    const acc = _activePreview === 'pixel' && np && np.accents;
     for (let i = 0; i < 3; i++) {
       const name = '--np' + (i + 1);
       if (acc && acc[i]) wrap.style.setProperty(name, `rgb(${acc[i].join(',')})`);
@@ -651,9 +835,9 @@ function _bpNowPlaying(np) {
     }
   }
 
-  const dur = np && np.duration_s;
+  const dur = (np && np.duration_s > 0) ? np.duration_s : NP_FALLBACK_DURATION_S;
   const el = (np && np.elapsed_s) || 0;
-  const pct = dur ? Math.min(100, el / dur * 100) : 0;
+  const pct = Math.min(100, el / dur * 100);
   const bar = document.getElementById('bp-progress');
   if (bar) bar.style.width = pct + '%';
   const track = document.getElementById('bp-bar');
@@ -690,24 +874,40 @@ function _bpText(id, text) {
   if (el && el.textContent !== text) el.textContent = text;
 }
 
+// every pulse shares one period, and a late starter is dialled back into phase
+const PULSE_S = 3.4;
+
+function syncPulse(el, on) {
+  if (!on) { el.style.animationDelay = ''; delete el.dataset.pulsing; return; }
+  if (el.dataset.pulsing) return;
+  el.dataset.pulsing = '1';
+  el.style.animationDelay = '-' + ((performance.now() / 1000) % PULSE_S).toFixed(3) + 's';
+}
+
+// a live hold drives the panel just as much as a latched trigger does
+function _userDriving(mode) {
+  return manuals.has(mode) || !!timeds[mode] || _pressMode === mode || _segHolding === mode;
+}
+
 function updateTriggerUI() {
   const active = statusData.active_mode;
   // nothing latched and nothing counting down means the scheduler is driving
   const auto = manuals.size === 0 && Object.keys(timeds).length === 0;
-  document.getElementById('pgrid-auto')?.classList.toggle('on', auto);
+  updateModeBtn(auto);
   document.querySelectorAll('.trig-seg').forEach(seg => {
     const always = seg.querySelector('.trig-seg-always');
     if (always) always.classList.toggle('on', manuals.has(seg.dataset.mode));
   });
   document.querySelectorAll('.pgrid-tile[data-mode]').forEach(tile => {
     const m = tile.dataset.mode;
-    tile.classList.toggle('active', m === active);
+    syncPulse(tile, tile.classList.toggle('active', m === active && !_userDriving(m)));
     tile.classList.toggle('held', manuals.has(m));
     tile.classList.toggle('timed', !!timeds[m]);
     const count = tile.querySelector('.pgrid-count');
     // a timed trigger can still arrive from a shortcut even though the ui cannot set one
     if (count) count.textContent = timeds[m] ? fmtMs(timeds[m].expiresAt) : '';
   });
+  updatePanelIcons(active);
 }
 
 function setField(id, value) {
@@ -733,6 +933,7 @@ function _applyVisibility(prefix, mode, cfg_section) {
   const useGlobal = cfg_section.use_global_brightness ?? false;
   document.getElementById(prefix + '_use_global').checked = useGlobal;
   _paintBrightnessRow(prefix, useGlobal);
+  _paintPreviewRow(mode);
 }
 
 function populate() {
@@ -768,14 +969,10 @@ function populate() {
   document.getElementById('d_after_hours_sleep_slider').style.display = sleepEnabled ? 'flex' : 'none';
   setField('d_after_hours_sleep_minutes', d.after_hours_sleep_timer_minutes ?? 30);
   nxt(document.getElementById('d_after_hours_sleep_minutes'), x=>x+'m');
-
-  document.getElementById('prio-sel-clock').value = cl.priority ?? 1;
   _applyVisibility('cl', 'clock', cl);
   setField('cl_brightness', cl.brightness ?? 1); nxt(document.getElementById('cl_brightness'), x=>x);
   document.getElementById('cl_blink').value = cl.blink_interval ?? 1;
   setField('cl_color',      cl.color || [0,255,0]);
-
-  document.getElementById('prio-sel-verse_of_day').value = v.priority ?? 2;
   document.getElementById('v_translation').value = v.translation ?? 'bibleapi:kjv';
   setField('v_duration',   Math.round((v.min_duration_s ?? 120) / 60));
   document.getElementById('v_prob').value = Math.round((v.probability ?? 0.3)*100);
@@ -789,13 +986,10 @@ function populate() {
     setField('v_hour_to',   v.active_hours[1]);
   }
 
-  setField('np_scrobbler', np.scrobbler ?? 'lastfm');
-  document.getElementById('prio-sel-nowplaying').value = np.priority ?? 3;
+  paintScrobbler(np.scrobbler ?? 'lastfm');
   _applyVisibility('np', 'nowplaying', np);
   setField('np_brightness',np.brightness ?? 50); nxt(document.getElementById('np_brightness'), x=>x);
   setField('np_font',      np.font ?? 3);
-
-  document.getElementById('prio-sel-dashboard').value = md.priority ?? 4;
   setField('md_duration',  Math.round((md.min_duration_s ?? 3600) / 60));
   _applyVisibility('md', 'dashboard', md);
   setField('md_brightness',md.brightness ?? 50); nxt(document.getElementById('md_brightness'), x=>x);
@@ -883,7 +1077,7 @@ async function loadStatus() {
       _uptimeBase = 0;
       _uptimeAt   = 0;
     }
-    paintPill();
+    paintLink();
     tickHeaderClock();
     // display_on is the scheduler's own flag, a dropped link says nothing about it
     const serverDisplayOn = statusData.display_on ?? true;
@@ -900,7 +1094,7 @@ async function loadStatus() {
     updateTriggerUI();
   } catch {
     _linkUp = false;
-    paintPill();
+    paintLink();
     tickHeaderClock();
   }
 }
@@ -932,6 +1126,14 @@ function saveHours() {
     +document.getElementById('v_hour_from').value,
     +document.getElementById('v_hour_to').value
   ]);
+}
+function paintScrobbler(which) {
+  document.getElementById('np_sc_lastfm').classList.toggle('on', which === 'lastfm');
+  document.getElementById('np_sc_librefm').classList.toggle('on', which === 'librefm');
+}
+function setScrobbler(which) {
+  paintScrobbler(which);
+  save('nowplaying', 'scrobbler', which);
 }
 function setUnits(units) {
   document.getElementById('w_u_metric').classList.toggle('on', units === 'metric');
@@ -1248,7 +1450,27 @@ async function saveWebhook() {
   refreshAllWebhookCards();
 }
 
-async function deleteWebhook(section, idx) {
+let _whPendingDelete = null;
+
+function deleteWebhook(section, idx) {
+  const wh = (cfg[section]?.webhooks || [])[idx];
+  _whPendingDelete = {section, idx};
+  const what = document.getElementById('wh-del-what');
+  if (what) what.textContent = wh
+    ? `${wh.method || 'GET'} ${wh.url || ''} on ${wh.trigger || 'this trigger'}`
+    : 'This webhook';
+  document.getElementById('wh-del-overlay').classList.add('show');
+}
+
+function closeDeleteWebhook() {
+  _whPendingDelete = null;
+  document.getElementById('wh-del-overlay').classList.remove('show');
+}
+
+async function confirmDeleteWebhook() {
+  if (!_whPendingDelete) return;
+  const {section, idx} = _whPendingDelete;
+  closeDeleteWebhook();
   cfg[section] = cfg[section] || {};
   cfg[section].webhooks = cfg[section].webhooks || [];
   cfg[section].webhooks.splice(idx, 1);
@@ -1264,6 +1486,28 @@ function refreshAllWebhookCards() {
   buildWebhookCard('device', 'wh-device');
 }
 
+// the header grows a row on mobile, so the sticky offsets have to be measured
+// stacked, the second word is grown until it spans the first one exactly
+function fitLogo() {
+  const w1 = document.querySelector('.logo-w1');
+  const w2 = document.querySelector('.logo-w2');
+  if (!w1 || !w2) return;
+  w2.style.fontSize = '';
+  if (getComputedStyle(w2).display !== 'block') return;
+  const base = parseFloat(getComputedStyle(w2).fontSize);
+  const wide = w2.getBoundingClientRect().width;
+  if (wide > 0) w2.style.fontSize = (base * w1.getBoundingClientRect().width / wide).toFixed(2) + 'px';
+}
+
+function measureChrome() {
+  fitLogo();
+  const root = document.documentElement;
+  const hdr = document.querySelector('header');
+  const bar = document.querySelector('.tab-bar');
+  if (hdr) root.style.setProperty('--hdr-h', hdr.offsetHeight + 'px');
+  if (bar) root.style.setProperty('--tabbar-h', bar.offsetHeight + 'px');
+}
+
 async function init() {
   try {
     cfg = await fetch('/config').then(r => r.json());
@@ -1277,6 +1521,8 @@ async function init() {
     refreshAllWebhookCards();
     initMacFields();
     initAppearance();
+    measureChrome();
+    new ResizeObserver(measureChrome).observe(document.querySelector('header'));
     await loadStatus();
     _pollTimer = setInterval(_tick, POLL_ACTIVE);
     setInterval(pollHome, 1000);
