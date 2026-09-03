@@ -17,6 +17,7 @@ The one where the web UI grew up.
 - Settings tab: Theme, accent colour and preview mode live here, next to an about block that credits the icon sets.
 - Interactive installer: Setup asks instead of assuming. It scans for the display over Bluetooth, walks the panels one by one, takes the keys and coordinates each one needs, offers autostart on Linux and Windows, and starts the service when it is done.
 - Update check: `./install.sh --check-update` asks GitHub whether something newer is out, and `--update` pulls it and restarts.
+- Update notice: The web UI asks GitHub for the newest release and says so above the credits when you are behind, with a link straight to it.
 - Verse translations: The verse of the day comes from OurManna and you pick the translation in the web UI.
 - Direct connect: A config switch connects by address instead of scanning first, for when the panel is being stubborn and sitting on a stale link.
 - Debug log: Verbose logging turns on from the config, from `--debug` or from `SPD_DEBUG`. You never have to touch the systemd unit for it.

@@ -3,9 +3,9 @@
 import argparse
 import asyncio
 import getpass
-import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -15,6 +15,7 @@ import urllib.request
 
 import tomlkit
 
+import assets.system.updates as updates
 from assets.system.version import VERSION
 
 ROOT            = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -25,7 +26,6 @@ SERVICE_NAME    = "smartpixeldashboard"
 UNIT_TEMPLATE   = os.path.join(ROOT, "assets", "system", f"{SERVICE_NAME}.service.template")
 UNIT_TARGET     = f"/etc/systemd/system/{SERVICE_NAME}.service"
 TASK_NAME       = "SmartPixelDashboard"
-RELEASES_API    = "https://api.github.com/repos/posch-dev/smart-pixel-dashboard/releases/latest"
 SHORTCUTS_REPO  = "https://github.com/posch-dev/apple-shortcuts"
 SCAN_SECONDS    = 6.0
 
@@ -344,28 +344,16 @@ def _print_done(port, running, autostart):
     print()
 
 
-def _release_tag():
-    request = urllib.request.Request(RELEASES_API, headers={"Accept": "application/vnd.github+json",
-                                                            "User-Agent": "smart-pixel-dashboard"})
-    with urllib.request.urlopen(request, timeout=10) as answer:
-        return json.load(answer)
-
-
-def _as_numbers(version):
-    return [int(part) for part in re.findall(r"\d+", version)] or [0]
-
-
 def _check_update(quiet=False):
     try:
-        release = _release_tag()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        tag, url = updates.fetch_latest()
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
         if not quiet:
             warn(f"Could not reach GitHub: {exc}")
         return None
-    tag = release.get("tag_name", "")
-    if _as_numbers(tag) > _as_numbers(VERSION):
+    if updates.is_newer(tag):
         info(f"Version {tag} is out, you are on {VERSION}.")
-        print(f"  {release.get('html_url', '')}")
+        print(f"  {url}")
         return tag
     if not quiet:
         info(f"Up to date, {VERSION} is the latest.")
@@ -380,9 +368,24 @@ def _update():
     if not _run(["git", "fetch", "--tags", "--quiet"]) or not _run(["git", "checkout", "--quiet", tag]):
         fail("Checkout failed, the working tree is probably not clean.")
     info(f"On {tag}, reinstalling ...")
-    command = ["powershell", "-File", starter, "--yes"] if IS_WINDOWS else ["bash", starter, "--yes"]
+    flags   = ["--yes", "--no-autostart", "--no-start"]
+    command = ["powershell", "-File", starter] + flags if IS_WINDOWS else ["bash", starter] + flags
     if not _run(command):
         fail("The reinstall failed, the code is on the new tag but the service was not restarted.")
+    return _restart_service()
+
+
+def _restart_service():
+    running = os.environ.get("SPD_RESTART_PID")
+    if running and not IS_WINDOWS:
+        info("Handing the running service a term, systemd brings it back.")
+        os.kill(int(running), signal.SIGTERM)
+        return 0
+    if not IS_WINDOWS and _service_installed():
+        prefix = [] if _is_admin() else ["sudo"]
+        _run(prefix + ["systemctl", "restart", SERVICE_NAME])
+        return 0
+    warn("Start the service yourself, the code is updated.")
     return 0
 
 
@@ -472,6 +475,8 @@ def _install(args):
         warn("No MAC address, the display cannot be reached. Set device.mac_address in config.toml.")
         return 1
 
+    if args.no_start:
+        return 0
     running = _start(port)
     _print_done(port, running, autostart)
     return 0 if running else 1
@@ -485,6 +490,7 @@ def main():
     parser.add_argument("--reconfigure", action="store_true", help="ask again even though config.toml exists")
     parser.add_argument("--update", action="store_true", help="pull the latest release and restart")
     parser.add_argument("--check-update", action="store_true", help="ask github whether a newer release is out")
+    parser.add_argument("--no-start", action="store_true", help="do not start the service at the end")
     parser.add_argument("--fresh", action="store_true", help="handled by the starter, rebuilds the venv")
     args = parser.parse_args()
 

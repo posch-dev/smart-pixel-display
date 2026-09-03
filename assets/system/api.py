@@ -17,6 +17,7 @@ import assets.system.log as log
 from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.webhooks as webhooks
+import assets.system.updates as updates
 import calendar_store
 import weather as weather_mod
 
@@ -307,6 +308,19 @@ def trigger_dashboard():
 @app.get("/version")
 def version():
     return jsonify({"version": VERSION}), 200
+
+
+@app.get("/update/status")
+def update_status():
+    return jsonify(updates.status()), 200
+
+
+@app.post("/update")
+def update_start():
+    if not updates.start_update():
+        return jsonify({"ok": False, "error": "not supported on this platform"}), 400
+    log.info("update", "update started from the web ui")
+    return jsonify({"ok": True}), 200
 
 
 @app.get("/home")

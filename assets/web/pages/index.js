@@ -1257,6 +1257,7 @@ async function init() {
     _pollTimer = setInterval(_tick, POLL_ACTIVE);
     setInterval(pollHome, 1000);
     showVersion();
+    showUpdate();
     tickHeaderClock();
     setInterval(tickHeaderClock, 1000);
   } catch (e) {
@@ -1275,6 +1276,45 @@ function showVersion() {
     el.textContent = 'v' + d.version;
     el.href = REPO_URL + '/releases/tag/v' + d.version;
   }).catch(() => {});
+}
+
+let _runningVersion = '';
+
+// pi-hole style: the card stays hidden until the pi says there is something newer
+function showUpdate() {
+  const card = document.getElementById('update-card');
+  if (!card) return;
+  fetch('/update/status').then(r => r.json()).then(d => {
+    _runningVersion = d.version || '';
+    if (!d.newer) return;
+    const shown = d.url ? '<a href="' + d.url + '" target="_blank" rel="noopener">' + d.latest + '</a>' : d.latest;
+    document.getElementById('update-line').innerHTML =
+      'Newer version ' + shown + ' available, you run v' + d.version + '.';
+    document.getElementById('update-cmd').textContent = d.command;
+    document.getElementById('update-btn').hidden = !d.can_install;
+    card.hidden = false;
+  }).catch(() => {});
+}
+
+function startUpdate() {
+  const btn = document.getElementById('update-btn');
+  btn.disabled = true;
+  btn.textContent = 'Installing';
+  fetch('/update', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => { if (d.ok) _waitForRestart(); else btn.textContent = 'Failed'; })
+    .catch(() => { btn.textContent = 'Failed'; });
+}
+
+// the pi goes away mid update, so a failed poll is the normal case here
+function _waitForRestart() {
+  const started = Date.now();
+  const poll = setInterval(() => {
+    if (Date.now() - started > 300000) { clearInterval(poll); return; }
+    fetch('/version', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      if (d.version && d.version !== _runningVersion) { clearInterval(poll); location.reload(); }
+    }).catch(() => {});
+  }, 5000);
 }
 
 function initAppearance() {
