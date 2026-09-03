@@ -360,8 +360,10 @@ async def run() -> None:
 
         try:
             print(f"{_ts()} Connecting to {MAC_ADDRESS} ...")
+            api.set_reconnect(attempting=True)
             async with AsyncClient(MAC_ADDRESS) as client:
                 api.set_connected(True)
+                api.set_reconnect()
 
                 ble_lock = asyncio.Lock()
                 clearing = [True]
@@ -562,11 +564,13 @@ async def run() -> None:
                 _disconnect_at = time.time()
             print(f"{_ts()} Connection lost: {e}")
             print(f"{_ts()} Retrying in {RECONNECT_DELAY}s ...")
+            api.set_reconnect(at=time.time() + RECONNECT_DELAY)
             await asyncio.sleep(RECONNECT_DELAY)
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", config.get("server", "port", 5000)))
+    api.bind_runtime(sys.modules[__name__])
     threading.Thread(target=api.run, kwargs={"port": port}, daemon=True).start()
     print(f"Web UI: http://0.0.0.0:{port}")
     asyncio.run(run())

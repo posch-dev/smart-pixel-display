@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import asyncio
 import logging
 import hashlib
@@ -36,13 +37,44 @@ def _fire_webhook_from_thread(section: str, trigger: str) -> None:
 
 _web = os.path.join(_root, "assets", "web")
 
-_ble_connected: bool = False
-_clearing:      bool = False
+_ble_connected:   bool = False
+_clearing:        bool = False
+_connected_since: float | None = None
+_reconnect_at:    float | None = None
+_reconnecting:    bool = False
+
+
+_runtime = None
+
+
+def bind_runtime(module) -> None:
+    global _runtime
+    _runtime = module
+
+
+def _rt():
+    # startup runs as __main__, so importing it by name would execute a second
+    # copy whose md_display is never fed by the weather fetcher
+    global _runtime
+    if _runtime is None:
+        import startup
+        _runtime = startup
+    return _runtime
 
 
 def set_connected(connected: bool) -> None:
-    global _ble_connected
+    global _ble_connected, _connected_since
+    if connected and not _ble_connected:
+        _connected_since = time.time()
+    elif not connected:
+        _connected_since = None
     _ble_connected = connected
+
+
+def set_reconnect(at: float | None = None, attempting: bool = False) -> None:
+    global _reconnect_at, _reconnecting
+    _reconnect_at = at
+    _reconnecting = attempting
 
 
 def set_clearing(clearing: bool) -> None:
@@ -67,6 +99,11 @@ def web_ui():
     return send_from_directory(_web, "index.html")
 
 
+@app.get("/assets/fonts/<path:filename>")
+def web_font(filename):
+    return send_from_directory(os.path.join(_root, "assets", "fonts"), filename)
+
+
 @app.get("/<path:filename>")
 def web_static(filename):
     return send_from_directory(_web, filename)
@@ -76,9 +113,12 @@ def web_static(filename):
 def get_status():
     return jsonify({
         **scheduler.get_status(),
-        "connected":       _ble_connected,
-        "clearing":        _clearing,
-        "in_active_hours": _in_active_hours(),
+        "connected":        _ble_connected,
+        "connected_for_s":  round(time.time() - _connected_since) if _connected_since else 0,
+        "reconnect_in_s":   max(0, round(_reconnect_at - time.time())) if _reconnect_at else None,
+        "reconnecting":     _reconnecting,
+        "clearing":         _clearing,
+        "in_active_hours":  _in_active_hours(),
     }), 200
 
 
@@ -189,8 +229,7 @@ def clear_calendar():
 
 @app.get("/dashboard/status")
 def dashboard_status():
-    import panels.dashboard.display as display
-    w = display._weather
+    w = _rt().md_display._weather
     weather_text = weather_mod.format_weather(w) if w else "(no weather data cached)"
     import calendar_store as cs
     return jsonify({
@@ -207,12 +246,10 @@ def trigger_dashboard():
 
 @app.get("/home")
 def home():
-    import startup
-    import panels.dashboard.display as dd
-
+    rt = _rt()
     status = scheduler.get_status()
 
-    verse_data = startup.get_verse_data()
+    verse_data = rt.get_verse_data()
     verse = None
     if verse_data:
         verse = {
@@ -221,12 +258,16 @@ def home():
             "translation": verse_data["translation"],
         }
 
-    np_state = startup.np_poller.get_state()
-    cover_etag = None
-    if np_state.get("cover"):
-        cover_etag = hashlib.md5(np_state["cover"]).hexdigest()[:12]
+    np_state = rt.np_poller.get_state()
+    cover = np_state.get("cover_web") or np_state.get("cover")
+    cover_etag = hashlib.md5(cover).hexdigest()[:12] if cover else None
+    # the three colours the panel derives from the cover, so the web ui can match it
+    np_main = sys.modules.get("panels.now_playing.main")
+    accents = getattr(getattr(np_main, "display", None), "last_accents", None)
+
     nowplaying = {
         "playing": bool(np_state.get("playing") and np_state.get("title")),
+        "accents": [list(a) for a in accents] if accents else None,
         "title": np_state.get("title"),
         "artist": np_state.get("artist"),
         "album": np_state.get("album"),
@@ -235,7 +276,7 @@ def home():
         "cover_etag": cover_etag,
     }
 
-    weather = dd._weather
+    weather = rt.md_display._weather
     dashboard = {
         "weather": weather,
         "events": calendar_store.get_events(),
@@ -247,6 +288,11 @@ def home():
         "connected": _ble_connected,
         "display_on": status.get("display_on", True),
         "in_active_hours": _in_active_hours(),
+        "colors": {
+            "clock": config.get("clock", "color", [0, 255, 0]),
+            "verse_of_day": config.get("verse_of_day", "color", [125, 40, 125]),
+            "dashboard": config.get("dashboard", "color", None),
+        },
         "verse": verse,
         "nowplaying": nowplaying,
         "dashboard": dashboard,
@@ -255,9 +301,8 @@ def home():
 
 @app.get("/nowplaying/cover")
 def nowplaying_cover():
-    import startup
-    state = startup.np_poller.get_state()
-    cover = state.get("cover")
+    state = _rt().np_poller.get_state()
+    cover = state.get("cover_web") or state.get("cover")
     if not cover:
         return "", 404
 

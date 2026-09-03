@@ -54,8 +54,18 @@ def _ensure_network() -> None:
         print(f"{_ts()} [poller] switched to Last.fm ({os.getenv('LASTFM_USERNAME')})")
 
 
-def _fetch_cover(title: str, artist: str, size: int = 32) -> bytes | None:
-    # Fetch album cover from iTunes.
+PANEL_COVER_SIZE = 32
+WEB_COVER_SIZE   = 600
+
+
+def _download(url: str) -> bytes | None:
+    img = requests.get(url, timeout=15)
+    img.raise_for_status()
+    return img.content
+
+
+def _fetch_cover(title: str, artist: str) -> tuple[bytes | None, bytes | None]:
+    # One iTunes lookup, two renditions: 32px for the panel, 600px for the web ui.
     try:
         r = requests.get(
             "https://itunes.apple.com/search",
@@ -65,14 +75,17 @@ def _fetch_cover(title: str, artist: str, size: int = 32) -> bytes | None:
         r.raise_for_status()
         results = r.json().get("results", [])
         if not results:
-            return None
-        url = results[0]["artworkUrl100"].replace("100x100bb", f"{size}x{size}bb")
-        img = requests.get(url, timeout=15)
-        img.raise_for_status()
-        return img.content
+            return None, None
+        art = results[0]["artworkUrl100"]
+        panel = _download(art.replace("100x100bb", f"{PANEL_COVER_SIZE}x{PANEL_COVER_SIZE}bb"))
+        try:
+            web = _download(art.replace("100x100bb", f"{WEB_COVER_SIZE}x{WEB_COVER_SIZE}bb"))
+        except Exception:
+            web = None
+        return panel, web
     except Exception as e:
         print(f"[cover] {e}")
-        return None
+        return None, None
 
 
 _lock  = threading.Lock()
@@ -86,7 +99,8 @@ _state = {
     "bpm":        None,
     "genres":     [],
     "preset":     None,   # from genre_presets
-    "cover":      None,   # raw image bytes
+    "cover":      None,   # raw image bytes, panel resolution
+    "cover_web":  None,   # raw image bytes, web ui resolution
 }
 _song_start: float = 0.0   # monotonic time when current song was first seen
 
@@ -175,6 +189,7 @@ def _poll_loop() -> None:
                             "genres":       [],
                             "preset":       None,
                             "cover":        None,
+                            "cover_web":    None,
                         })
 
                     def _fetch_metadata(_title=title, _artist=artist, _track=track):
@@ -226,7 +241,7 @@ def _poll_loop() -> None:
                             ttags       = _safe_result(f_ttags, [], "track tags")
                             atags       = _safe_result(f_atags, [], "artist tags")
                             album_name  = _safe_result(f_album, None, "album")
-                            cover       = _safe_result(f_cover, None, "cover")
+                            cover, cover_web = _safe_result(f_cover, (None, None), "cover")
                             lastfm_tags = ttags + atags
                         finally:
                             # Don't block on stragglers, a hung request just finishes in the background and gets discarded.
@@ -242,6 +257,7 @@ def _poll_loop() -> None:
                                     "genres":     lastfm_tags,
                                     "preset":     preset,
                                     "cover":      cover,
+                                    "cover_web":  cover_web,
                                 })
 
                         cover_str  = "yes" if cover else "no"

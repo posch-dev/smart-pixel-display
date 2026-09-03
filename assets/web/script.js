@@ -3,6 +3,14 @@
 const MODES = ['clock','verse_of_day','nowplaying','dashboard'];
 const LABELS = { clock:'Clock', verse_of_day:'Verse of Day', nowplaying:'NowPlaying', dashboard:'Dashboard' };
 const MODULE_PREFIX = { clock:'cl', verse_of_day:'v', nowplaying:'np', dashboard:'md' };
+const TRIG_ICONS = { clock:'#ico-clock', verse_of_day:'#ico-cross', nowplaying:'#ico-music', dashboard:'#ico-calendar' };
+const PANEL_KEY = { clock:'clock', verse_of_day:'verse', nowplaying:'np', dashboard:'dash' };
+const PANEL_DESC = {
+  clock:        'Time and date, with a blinking colon',
+  verse_of_day: 'A bible verse reference, refreshed daily',
+  nowplaying:   'Track, artist and cover art while music plays',
+  dashboard:    'Weather and the next calendar entries',
+};
 
 let cfg = {};
 let statusData = {};
@@ -11,51 +19,216 @@ let _displayOn = true;
 const manuals  = new Set();
 const timeds   = {};
 
-function toggleTheme() {
-  const html = document.documentElement;
-  const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
-  html.dataset.theme = next;
-  document.getElementById('theme-btn').textContent = next === 'dark' ? '🌙' : '☀️';
-  localStorage.setItem('theme', next);
+const HOLD_THRESHOLD_MS = 350;
+let _pressMode  = null;
+let _pressedAt  = 0;
+let _segHolding = null;
+
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+// 'pixel' paints the tile in the colours the matrix uses, 'web' in the ui accent
+let _previewMode = 'web';
+
+function _applyPreviewMode(mode) {
+  _previewMode = mode;
+  document.getElementById('prev-web')?.classList.toggle('on', mode === 'web');
+  document.getElementById('prev-pixel')?.classList.toggle('on', mode === 'pixel');
 }
 
-function setAccent(hex) {
-  const r = parseInt(hex.slice(1,3),16);
-  const g = parseInt(hex.slice(3,5),16);
-  const b = parseInt(hex.slice(5,7),16);
+function setPreviewMode(mode) {
+  _applyPreviewMode(mode);
+  setCookie('spd_preview', mode);
+  _bpMode = null;
+  pollHome();
+}
+
+function setCookie(name, value) {
+  document.cookie = `${name}=${encodeURIComponent(value)};path=/;max-age=${COOKIE_MAX_AGE};SameSite=Lax`;
+}
+
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function setThemeMode(mode) {
+  document.documentElement.dataset.theme = mode;
+  document.getElementById('theme-dark').classList.toggle('on', mode === 'dark');
+  document.getElementById('theme-light').classList.toggle('on', mode === 'light');
+  setCookie('spd_theme', mode);
+}
+
+// the accent is drawn as text on both card colours, so it has to clear
+// a floor against each of them
+const ACCENT_MIN_ON_LIGHT = 2.4;
+const ACCENT_MIN_ON_DARK  = 3.0;
+const LUM_LIGHT_CARD = 1.0;
+const LUM_DARK_CARD  = _luminance([30, 30, 30]);
+
+function _luminance([r, g, b]) {
+  const f = v => {
+    v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+function _contrast(a, b) {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function rgbToHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [h, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue = t => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [hue(h + 1 / 3), hue(h), hue(h - 1 / 3)].map(v => Math.round(v * 255));
+}
+
+function clampAccent(hex) {
+  const [h, s, l] = rgbToHsl(hexToRgb(hex));
+  let best = null, bestDist = Infinity;
+  // hue and saturation stay, only lightness moves into the legible band
+  for (let i = 0; i <= 100; i++) {
+    const cand = i / 100;
+    const lum = _luminance(hslToRgb(h, s, cand));
+    if (_contrast(lum, LUM_LIGHT_CARD) < ACCENT_MIN_ON_LIGHT) continue;
+    if (_contrast(lum, LUM_DARK_CARD) < ACCENT_MIN_ON_DARK) continue;
+    const d = Math.abs(cand - l);
+    if (d < bestDist) { bestDist = d; best = cand; }
+  }
+  return best === null ? hex : rgbToHex(hslToRgb(h, s, best));
+}
+
+function previewAccent(hex) {
+  const [r, g, b] = hexToRgb(hex);
   const root = document.documentElement;
   root.style.setProperty('--accent', hex);
   root.style.setProperty('--accent-d', `rgba(${r},${g},${b},.12)`);
-  document.getElementById('accent-pick').value = hex;
-  localStorage.setItem('accent', hex);
+  const hexLabel = document.getElementById('accent-hex');
+  if (hexLabel) hexLabel.textContent = hex.toUpperCase();
 }
 
-(function initAppearance() {
-  const theme  = localStorage.getItem('theme')  || 'dark';
-  const accent = localStorage.getItem('accent') || '#87a878';
-  document.documentElement.dataset.theme = theme;
-  document.getElementById('theme-btn').textContent = theme === 'dark' ? '🌙' : '☀️';
-  setAccent(accent);
-})();
+function setAccent(hex) {
+  hex = clampAccent(hex);
+  previewAccent(hex);
+  const pick = document.getElementById('accent-pick');
+  if (pick) pick.value = hex;
+  setCookie('spd_accent', hex);
+}
 
-function showTab(id) {
+function showTab(id, btn) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + id).classList.add('active');
-  event.currentTarget.classList.add('active');
+  const pane = document.getElementById('tab-' + id);
+  if (pane) pane.classList.add('active');
+  if (btn) btn.classList.add('active');
   document.getElementById('panel-tabs').classList.toggle('visible', id === 'modules');
 }
 
-function showPanel(id) {
+function showPanel(id, btn) {
   document.querySelectorAll('.panel-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.panel-tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('panel-' + id).classList.add('active');
-  event.currentTarget.classList.add('active');
+  const pane = document.getElementById('panel-' + id);
+  if (pane) pane.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function goPanel(mode) {
+  showTab('modules', document.querySelector('.tab-btn[data-tab="modules"]'));
+  const key = PANEL_KEY[mode] || mode;
+  showPanel(key, document.querySelector(`.panel-tab-btn[data-panel="${key}"]`));
+}
+
+function buildPanelTabs() {
+  const bar = document.getElementById('panel-tabs');
+  if (!bar) return;
+  const current = document.querySelector('.panel-pane.active')?.id.replace('panel-', '');
+  const enabled = MODES.filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true);
+  bar.innerHTML = '';
+  enabled.forEach(m => {
+    const key = PANEL_KEY[m];
+    const b = document.createElement('button');
+    b.className = 'panel-tab-btn';
+    b.dataset.panel = key;
+    b.innerHTML = `<svg class="ico"><use href="${TRIG_ICONS[m]}"/></svg><span>${LABELS[m]}</span>`;
+    b.onclick = () => showPanel(key, b);
+    bar.appendChild(b);
+  });
+  // the open pane may belong to a panel that was just switched off
+  const keys = enabled.map(m => PANEL_KEY[m]);
+  const target = keys.includes(current) ? current : keys[0];
+  if (target) showPanel(target, bar.querySelector(`.panel-tab-btn[data-panel="${target}"]`));
+}
+
+function buildPanelIcons() {
+  const bar = document.getElementById('panel-icons');
+  if (!bar) return;
+  bar.innerHTML = '';
+  MODES.filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true).forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'panel-ico';
+    b.dataset.panel = PANEL_KEY[m];
+    b.title = LABELS[m];
+    b.innerHTML = `<svg class="ico"><use href="${TRIG_ICONS[m]}"/></svg>`;
+    b.onclick = () => goPanel(m);
+    bar.appendChild(b);
+  });
+  updatePanelIcons(statusData.active_mode);
+}
+
+function buildEnabledList() {
+  const list = document.getElementById('panel-enabled-list');
+  if (!list) return;
+  list.innerHTML = MODES.map(m => {
+    const on = cfg[m] ? (cfg[m].enabled ?? true) : true;
+    return `<div class="prow${on ? '' : ' off'}" data-mode="${m}">
+      <svg class="ico prow-ico"><use href="${TRIG_ICONS[m]}"/></svg>
+      <div class="prow-text">
+        <div class="prow-name">${LABELS[m]}</div>
+        <div class="row-sub">${PANEL_DESC[m]}</div>
+      </div>
+      <label class="toggle"><input type="checkbox" ${on ? 'checked' : ''}
+        onchange="toggleEnabled('${m}',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+    </div>`;
+  }).join('');
+}
+
+function updatePanelIcons(activeMode) {
+  const map = {clock:'clock', verse_of_day:'verse', nowplaying:'np', dashboard:'dash'};
+  const panel = map[activeMode] || activeMode;
+  document.querySelectorAll('.panel-ico').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.panel === panel);
+  });
 }
 
 function rgbToHex([r,g,b]) { return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join(''); }
 function hexToRgb(hex) { return [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)); }
-function nxt(el, fmt) { el.nextElementSibling.textContent = fmt(el.value); }
+function nxt(el, fmt) {
+  const val = el.parentElement.querySelector('.val');
+  if (val) val.textContent = fmt(el.value);
+}
 function fmtDur(s) {
   if (s <= 0) return '0s';
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
@@ -64,6 +237,17 @@ function fmtDur(s) {
   return sec + 's';
 }
 function fmtMs(ms) { return fmtDur(Math.max(0, Math.round((ms - Date.now()) / 1000))); }
+function fmtUptime(s) {
+  s = Math.max(0, Math.round(s));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600);
+  const m = Math.floor(s % 3600 / 60), sec = s % 60;
+  if (d >= 364) return `${Math.floor(d / 364)}y ${Math.floor(d % 364 / 7)}w ${d % 7}d`;
+  if (d >= 7)   return `${Math.floor(d / 7)}w ${d % 7}d ${h}h`;
+  if (d) return `${d}d ${h}h ${m}m`;
+  if (h) return `${h}h ${m}m ${sec}s`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
 
 function toast(msg, type='ok') {
   const el = document.getElementById('toast');
@@ -85,6 +269,31 @@ async function togglePower() {
   updatePowerBtn();
 }
 
+let _uptimeBase  = 0;
+let _uptimeAt    = 0;
+let _linkUp      = true;
+let _retryAt     = 0;
+let _retrying    = false;
+
+function tickHeaderClock() {
+  const el = document.getElementById('s-time');
+  if (!el) return;
+  if (!_linkUp) {
+    if (_retrying)     el.textContent = 'Reconnecting';
+    else if (_retryAt) el.textContent = 'Reconnecting in ' + Math.max(0, Math.round((_retryAt - Date.now()) / 1000)) + 's';
+    else               el.textContent = 'Disconnected';
+    return;
+  }
+  el.textContent = _uptimeAt ? fmtUptime(_uptimeBase + (Date.now() - _uptimeAt) / 1000) : '\u2014';
+}
+
+function paintPill() {
+  const pill = document.getElementById('status-pill');
+  if (!pill) return;
+  pill.classList.toggle('offline', !_linkUp);
+  pill.classList.toggle('clearing', _linkUp && !!statusData.clearing);
+}
+
 function updatePowerBtn() {
   const btn = document.getElementById('power-btn');
   if (!btn) return;
@@ -93,28 +302,37 @@ function updatePowerBtn() {
 }
 
 function toggleEnabled(mode, enabled) {
-  const prefix = MODULE_PREFIX[mode];
-  const el = document.getElementById(prefix + '_settings');
-  if (el) el.style.display = enabled ? '' : 'none';
   cfg[mode] = cfg[mode] || {};
   cfg[mode].enabled = enabled;
   save(mode, 'enabled', enabled);
-  updateTriggerCardStates();
+  buildPanelGrid();
+  buildPanelTabs();
+  buildPanelIcons();
+  const prow = document.querySelector(`.prow[data-mode="${mode}"]`);
+  if (prow) prow.classList.toggle('off', !enabled);
 }
 
 function toggleUseGlobal(mode, useGlobal) {
-  const prefix = MODULE_PREFIX[mode];
-  document.getElementById(prefix + '_brightness_row').style.display = useGlobal ? 'none' : '';
+  _paintBrightnessRow(MODULE_PREFIX[mode], useGlobal);
   save(mode, 'use_global_brightness', useGlobal);
 }
 
+function _paintBrightnessRow(prefix, useGlobal) {
+  const row = document.getElementById(prefix + '_bright_row');
+  if (row) row.classList.toggle('global', useGlobal);
+  const label = document.getElementById(prefix + '_global_label');
+  if (label) label.textContent = useGlobal ? 'Global' : 'Local';
+}
+
 function toggleBeforeEvent(on) {
-  document.getElementById('md_hours_before_row').style.display = on ? '' : 'none';
+  const row = document.getElementById('md_hours_before_row');
+  if (row) row.style.display = on ? 'flex' : 'none';
   save('dashboard', 'auto_trigger_before_event', on);
 }
 
 function toggleGrace(on) {
-  document.getElementById('md_grace_row').style.display = on ? '' : 'none';
+  const row = document.getElementById('md_grace_row');
+  if (row) row.style.display = on ? 'flex' : 'none';
   save('dashboard', 'grace_minutes', on ? (+document.getElementById('md_grace_minutes').value || 10) : 0);
 }
 
@@ -133,21 +351,12 @@ async function savePriority(mode, newPrio) {
   document.getElementById('prio-sel-' + mode).value = newPrio;
 }
 
-const _DOTS = ['.', '..', '...'];
-let _dotIdx = 0, _dotTimer = null;
-
-function _showConnecting() {
-  document.getElementById('connecting-overlay').classList.add('show');
-  if (!_dotTimer) _dotTimer = setInterval(() => {
-    document.getElementById('connecting-dots').textContent = _DOTS[_dotIdx++ % _DOTS.length];
-  }, 500);
-}
-function _hideConnecting() {
-  document.getElementById('connecting-overlay').classList.remove('show');
-  clearInterval(_dotTimer); _dotTimer = null; _dotIdx = 0;
-}
-
 async function save(section, key, value) {
+  if (section === 'clock' && key === 'blink_interval') {
+    cfg.clock = cfg.clock || {};
+    cfg.clock.blink_interval = value;
+    applyBlinkRate();
+  }
   try {
     const r = await fetch(`/config/${section}/${key}`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -191,48 +400,6 @@ async function setManual(mode, on) {
   loadStatus();
 }
 
-async function startTimed(mode, totalMs) {
-  for (const m of Object.keys(timeds)) {
-    if (m !== mode) {
-      clearInterval(timeds[m].intervalId);
-      delete timeds[m];
-      if (!manuals.has(m)) await apiUntrigger(m);
-      syncTriggerControls(m);
-    }
-  }
-  if (timeds[mode]) { clearInterval(timeds[mode].intervalId); delete timeds[mode]; }
-  if (mode !== 'nowplaying') await apiUntrigger('nowplaying');
-  const expiresAt = Date.now() + totalMs;
-  await apiTrigger(mode, expiresAt);
-  const intervalId = setInterval(async () => {
-    if (Date.now() >= expiresAt) {
-      clearInterval(timeds[mode]?.intervalId);
-      delete timeds[mode];
-      if (!manuals.has(mode)) await apiUntrigger(mode);
-      syncTriggerControls(mode);
-      updateTriggerUI(); loadStatus();
-    } else {
-      updateTriggerUI();
-    }
-  }, 1000);
-  timeds[mode] = {expiresAt, intervalId};
-  toast('Timed: ' + LABELS[mode] + ' for ' + fmtDur(Math.round(totalMs/1000)));
-  updateTriggerUI(); loadStatus();
-}
-
-async function holdStart(mode, btn) {
-  btn.classList.add('holding');
-  if (mode !== 'nowplaying') await apiUntrigger('nowplaying');
-  await apiTrigger(mode);
-  updateTriggerUI(); loadStatus();
-}
-
-async function holdEnd(mode, btn) {
-  btn.classList.remove('holding');
-  if (!manuals.has(mode) && !timeds[mode]) await apiUntrigger(mode);
-  updateTriggerUI(); loadStatus();
-}
-
 async function resetAll() {
   for (const mode of MODES) {
     manuals.delete(mode);
@@ -244,153 +411,317 @@ async function resetAll() {
   updateTriggerUI(); loadStatus();
 }
 
-function syncTriggerControls(mode) {
-  const manualOn = manuals.has(mode);
-  const timedRow = document.getElementById('timed-row-' + mode);
-  const manualCb = document.getElementById('manual-cb-' + mode);
-  if (timedRow)  timedRow.classList.toggle('trig-row-disabled', manualOn);
-  if (manualCb)  manualCb.checked = manualOn;
+function syncTriggerControls() {
+  updateTriggerUI();
 }
 
-function buildTriggerCards() {
-  const container = document.getElementById('trigger-cards');
-  container.innerHTML = '';
-  MODES.forEach(mode => {
-    const card = document.createElement('div');
-    card.className = 'mode-trigger-card';
-    card.id = 'tcard-' + mode;
-    card.innerHTML = `
-      <div class="mode-trigger-header">
-        <div class="badge-active-dot"></div>
-        <div class="mode-trigger-name">${LABELS[mode]}</div>
-        <span class="disabled-badge" style="display:none;font-size:10px;color:var(--muted);margin-left:auto">disabled</span>
-      </div>
-
-      <div class="trig-row">
-        <div class="trig-row-label">Manual</div>
-        <div class="trig-row-content">
-          <label class="toggle">
-            <input type="checkbox" id="manual-cb-${mode}" class="manual-toggle"
-              onchange="setManual('${mode}', this.checked)">
-            <div class="t-track"></div><div class="t-thumb"></div>
-          </label>
-          <span style="font-size:12px;color:var(--muted)">Hold indefinitely</span>
-        </div>
-      </div>
-
-      <div class="trig-row" id="timed-row-${mode}">
-        <div class="trig-row-label">Timed</div>
-        <div class="trig-row-content" style="flex-wrap:wrap;row-gap:6px">
-          <input type="number" min="0" max="23" style="width:46px"
-            id="th-${mode}" placeholder="HH">
-          <input type="number" min="0" max="59" style="width:46px"
-            id="tm-${mode}" placeholder="MM">
-          <input type="number" min="0" max="59" style="width:46px"
-            id="ts-${mode}" placeholder="SS">
-          <button class="btn btn-accent btn-sm"
-            onclick="startTimedFromInputs('${mode}')">▶</button>
-          <span id="tcountdown-${mode}" style="font-size:11px;color:var(--blue);width:100%;line-height:1"></span>
-        </div>
-      </div>
-
-      <div class="trig-row">
-        <div class="trig-row-label">Hold</div>
-        <div class="trig-row-content">
-          <button class="btn-hold"
-            onmousedown="holdStart('${mode}',this)"
-            onmouseup="holdEnd('${mode}',this)"
-            onmouseleave="holdEnd('${mode}',this)"
-            ontouchstart="holdStart('${mode}',this);event.preventDefault()"
-            ontouchend="holdEnd('${mode}',this)"
-            ontouchcancel="holdEnd('${mode}',this)">
-            Hold to Trigger
-          </button>
-          <span style="font-size:12px;color:var(--muted)">Active while pressed</span>
-        </div>
-      </div>
-    `;
-    container.appendChild(card);
+function buildPanelGrid() {
+  const grid = document.getElementById('panel-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  MODES.filter(m => cfg[m] ? (cfg[m].enabled ?? true) : true).forEach(mode => {
+    const tile = document.createElement('button');
+    tile.className = 'pgrid-tile';
+    tile.dataset.mode = mode;
+    tile.innerHTML = `<svg class="ico"><use href="${TRIG_ICONS[mode]}"/></svg>` +
+      `<span class="pgrid-label">${LABELS[mode]}<span class="pgrid-count"></span></span>`;
+    tile.addEventListener('pointerdown', e => pressStart(mode, tile, e));
+    tile.addEventListener('pointerup', () => pressEnd(mode, tile));
+    tile.addEventListener('pointerleave', () => pressCancel(tile));
+    tile.addEventListener('pointercancel', () => pressCancel(tile));
+    tile.addEventListener('contextmenu', e => e.preventDefault());
+    grid.appendChild(tile);
   });
-  updateTriggerCardStates();
+  updateTriggerUI();
 }
 
-function updateTriggerCardStates() {
-  MODES.forEach(mode => {
-    const card = document.getElementById('tcard-' + mode);
-    if (!card) return;
-    const section = mode === 'clock' ? 'clock' : mode;
-    const enabled = cfg[section]?.enabled ?? true;
-    card.classList.toggle('trig-disabled', !enabled);
-    const badge = card.querySelector('.disabled-badge');
-    if (badge) badge.style.display = enabled ? 'none' : '';
-    card.querySelectorAll('input, button.btn-hold, button.btn-accent').forEach(el => {
-      if (!enabled) el.disabled = true;
-      else el.disabled = false;
+function initTriggerSegs() {
+  document.querySelectorAll('.trig-seg').forEach(seg => {
+    const mode = seg.dataset.mode;
+    const hold = seg.querySelector('.trig-seg-hold');
+    const always = seg.querySelector('.trig-seg-always');
+    hold.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      hold.setPointerCapture?.(e.pointerId);
+      segHoldStart(mode, hold);
     });
+    hold.addEventListener('pointerup', () => segHoldEnd(mode, hold));
+    hold.addEventListener('pointercancel', () => segHoldEnd(mode, hold));
+    hold.addEventListener('contextmenu', e => e.preventDefault());
+    always.addEventListener('click', () => setManual(mode, !manuals.has(mode)));
   });
 }
 
-function startTimedFromInputs(mode) {
-  const h = +document.getElementById('th-' + mode).value || 0;
-  const m = +document.getElementById('tm-' + mode).value || 0;
-  const s = +document.getElementById('ts-' + mode).value || 0;
-  const ms = (h * 3600 + m * 60 + s) * 1000;
-  if (ms <= 0) { toast('Enter a duration first', 'err'); return; }
-  startTimed(mode, ms);
+async function segHoldStart(mode, btn) {
+  _segHolding = mode;
+  btn.classList.add('on');
+  await apiTrigger(mode);
+  loadStatus();
+}
+
+async function segHoldEnd(mode, btn) {
+  if (_segHolding !== mode) return;
+  _segHolding = null;
+  btn.classList.remove('on');
+  if (!manuals.has(mode)) { await apiUntrigger(mode); loadStatus(); }
+}
+
+async function pressStart(mode, tile, e) {
+  e.preventDefault();
+  tile.setPointerCapture?.(e.pointerId);
+  _pressMode = mode;
+  _pressedAt = Date.now();
+  tile.classList.add('pressing');
+  // fire straight away so a hold lights the panel the instant it is touched
+  if (!manuals.has(mode)) { await apiTrigger(mode); loadStatus(); }
+}
+
+function pressCancel(tile) {
+  if (_pressMode === null) return;
+  tile.classList.remove('pressing');
+}
+
+async function pressEnd(mode, tile) {
+  if (_pressMode !== mode) return;
+  const held = Date.now() - _pressedAt;
+  _pressMode = null;
+  tile.classList.remove('pressing');
+  if (manuals.has(mode)) {
+    if (held < HOLD_THRESHOLD_MS) await setManual(mode, false);
+    return;
+  }
+  if (held < HOLD_THRESHOLD_MS) await setManual(mode, true);
+  else { await apiUntrigger(mode); loadStatus(); }
+  updateTriggerUI();
+}
+
+function pollHome() {
+  if (document.getElementById('tab-home')?.classList.contains('active') && !document.hidden) {
+    fetch('/home').then(r => r.json()).then(data => {
+      updateBlueprint(data);
+      updatePanelIcons(data.active_mode);
+    }).catch(() => {});
+  }
+}
+
+const BP_WEATHER_ICONS = {
+  'clear': '#ico-sun', 'partly cloudy': '#ico-cloud-sun', 'overcast': '#ico-cloud',
+  'fog': '#ico-fog', 'drizzle': '#ico-rain', 'rain': '#ico-rain',
+  'snow': '#ico-snow', 'thunderstorm': '#ico-thunder', 'windy': '#ico-wind',
+};
+
+const BP_TEMPLATES = {
+  clock: '<div class="bp-clock-wrap" id="bp-clock-wrap"><div class="bp-clock"><span id="bp-hh">--</span><span class="bp-colon" id="bp-colon">:</span><span id="bp-mm">--</span></div>' +
+         '<div class="bp-sub bp-date" id="bp-date"></div></div>',
+  verse_of_day: '<div class="bp-verse" id="bp-verse">' +
+         '<span class="bp-title bp-ref" id="bp-ref">\u2014</span>' +
+         '<div class="bp-sub bp-clamp" id="bp-text"></div>' +
+         '<div class="bp-sub bp-trans" id="bp-trans"></div></div>',
+  nowplaying: '<div class="bp-np" id="bp-np">' +
+         '<div class="bp-cover-wrap">' +
+           '<img class="bp-cover" id="bp-cover" alt="" hidden>' +
+           '<div class="bp-cover-ph" id="bp-cover-ph"><svg class="ico"><use href="#ico-music"/></svg></div>' +
+         '</div>' +
+         '<div class="bp-np-meta">' +
+           '<div class="bp-np-head"><div class="bp-track" id="bp-track">Nothing playing</div>' +
+           '<div class="bp-album" id="bp-album"></div></div>' +
+           '<div class="bp-sub bp-artist" id="bp-artist"></div>' +
+           '<div class="bp-bar" id="bp-bar"><div class="bp-bar-fill" id="bp-progress"></div>' +
+           '<span class="bp-bar-head"></span></div>' +
+           '<div class="bp-times"><span id="bp-elapsed">0:00</span><span id="bp-total">0:00</span></div>' +
+         '</div></div>',
+  dashboard: '<div class="bp-dash" id="bp-dash">' +
+         '<svg class="ico bp-wico" id="bp-wico"><use href="#ico-cloud"/></svg>' +
+         '<div class="bp-dash-now"><div class="bp-temp" id="bp-temp">\u2014</div>' +
+         '<div class="bp-sub" id="bp-cond"></div></div>' +
+         '<div class="bp-dash-ev"><div class="bp-ev-title" id="bp-event">No upcoming events</div>' +
+         '<div class="bp-sub" id="bp-event-when"></div></div></div>',
+};
+
+const BP_TRANSLATIONS = {
+  'bibleapi:kjv': 'KJV', 'bibleapi:web': 'WEB', 'bibleapi:asv': 'ASV', 'bolls:ESV': 'ESV',
+};
+
+let _bpMode = null;
+
+function updateBlueprint(data) {
+  const el = document.getElementById('blueprint-content');
+  if (!el) return;
+  const mode = data.active_mode || 'clock';
+  if (mode !== _bpMode) {
+    _bpMode = mode;
+    el.innerHTML = BP_TEMPLATES[mode] || '';
+    applyBlinkRate();
+  }
+  if (mode === 'clock')             _bpClock(data.colors);
+  else if (mode === 'verse_of_day') _bpVerse(data.verse, data.colors);
+  else if (mode === 'nowplaying')   _bpNowPlaying(data.nowplaying);
+  else if (mode === 'dashboard')    _bpDashboard(data.dashboard, data.colors);
+}
+
+function applyBlinkRate() {
+  const colon = document.getElementById('bp-colon');
+  if (!colon) return;
+  const interval = cfg.clock?.blink_interval ?? 1;
+  if (!interval) { colon.style.animation = 'none'; colon.style.opacity = '1'; return; }
+  colon.style.animation = `bp-blink ${interval * 2}s steps(1, end) infinite`;
+}
+
+function _tint(id, prop, rgb) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (_previewMode === 'pixel' && Array.isArray(rgb) && rgb.length === 3) {
+    el.style.setProperty(prop, `rgb(${rgb.join(',')})`);
+  } else {
+    el.style.removeProperty(prop);
+  }
+}
+
+function _bpClock(colors) {
+  _tint('bp-clock-wrap', '--cl', colors && colors.clock);
+  const now = new Date();
+  _bpText('bp-hh', String(now.getHours()).padStart(2, '0'));
+  _bpText('bp-mm', String(now.getMinutes()).padStart(2, '0'));
+  const weekday = now.toLocaleDateString('en-US', {weekday: 'long'});
+  const month = now.toLocaleDateString('en-US', {month: 'long'});
+  const day = now.getDate();
+  // raised suffix needs markup, so this one line is built rather than set as text
+  const html = `${weekday}, ${month} ${day}<sup class="bp-ord">${_ordinalSuffix(day)}</sup>  ${now.getFullYear()}`;
+  const dateEl = document.getElementById('bp-date');
+  if (dateEl && dateEl.innerHTML !== html) dateEl.innerHTML = html;
+}
+
+function _ordinalSuffix(n) {
+  const tail = ['th', 'st', 'nd', 'rd'], v = n % 100;
+  return tail[(v - 20) % 10] || tail[v] || tail[0];
+}
+
+function _bpVerse(v, colors) {
+  _tint('bp-verse', '--vs', colors && colors.verse_of_day);
+  _bpText('bp-ref', _verseReference(v && v.reference));
+  _bpText('bp-text', (v && v.text) || '');
+  const t = v && v.translation;
+  _bpText('bp-trans', t ? '(' + (BP_TRANSLATIONS[t] || t.split(':').pop().toUpperCase()) + ')' : '');
+}
+
+function _verseReference(ref) {
+  if (!ref) return '\u2014';
+  // widen the gap before the chapter:verse, the element keeps the run of spaces
+  return ref.replace(/\s+(\d+\s*:\s*[\d\u2013,\- ]+)$/, '  $1');
+}
+
+function fmtClock(s) {
+  if (s == null) return '0:00';
+  s = Math.max(0, Math.round(s));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function _bpNowPlaying(np) {
+  const playing = !!(np && np.playing && np.title);
+  _bpText('bp-track', (np && np.title) || 'Nothing playing');
+  _bpText('bp-artist', (np && np.artist) || '');
+  _bpText('bp-album', (np && np.album) || '');
+
+  const img = document.getElementById('bp-cover');
+  const ph = document.getElementById('bp-cover-ph');
+  const etag = np && np.cover_etag;
+  if (img && ph) {
+    if (etag) {
+      if (img.dataset.etag !== etag) {
+        img.dataset.etag = etag;
+        img.src = '/nowplaying/cover?e=' + etag;
+      }
+      img.hidden = false;
+      ph.hidden = true;
+    } else {
+      img.hidden = true;
+      ph.hidden = false;
+      delete img.dataset.etag;
+    }
+  }
+
+  // the same three colours the matrix pulls out of the cover
+  const wrap = document.getElementById('bp-np');
+  if (wrap) {
+    const acc = _previewMode === 'pixel' && np && np.accents;
+    for (let i = 0; i < 3; i++) {
+      const name = '--np' + (i + 1);
+      if (acc && acc[i]) wrap.style.setProperty(name, `rgb(${acc[i].join(',')})`);
+      else wrap.style.removeProperty(name);
+    }
+  }
+
+  const dur = np && np.duration_s;
+  const el = (np && np.elapsed_s) || 0;
+  const pct = dur ? Math.min(100, el / dur * 100) : 0;
+  const bar = document.getElementById('bp-progress');
+  if (bar) bar.style.width = pct + '%';
+  const track = document.getElementById('bp-bar');
+  if (track) track.style.setProperty('--pct', pct + '%');
+  _bpText('bp-elapsed', fmtClock(playing ? el : 0));
+  _bpText('bp-total', fmtClock(dur));
+}
+
+function _bpDashboard(dash, colors) {
+  _tint('bp-dash', '--ds', colors && colors.dashboard);
+  const w = (dash && dash.weather) || {};
+  _bpText('bp-temp', w.temp_now != null ? Math.round(w.temp_now) + '\u00b0' : '\u2014');
+  const parts = [];
+  if (w.condition) parts.push(w.condition);
+  if (w.temp_high != null) parts.push('H ' + Math.round(w.temp_high) + '\u00b0');
+  if (w.temp_low != null) parts.push('L ' + Math.round(w.temp_low) + '\u00b0');
+  _bpText('bp-cond', parts.join('  \u00b7  '));
+  const use = document.querySelector('#bp-wico use');
+  if (use) use.setAttribute('href', BP_WEATHER_ICONS[w.condition] || '#ico-cloud');
+  const ev = ((dash && dash.events) || [])[0];
+  _bpText('bp-event', (ev && ev.title) || 'No upcoming events');
+  _bpText('bp-event-when', ev ? _eventWhen(ev) : '');
+}
+
+function _eventWhen(ev) {
+  const d = new Date(ev.start_time);
+  if (isNaN(d)) return '';
+  return d.toLocaleString('en-GB',
+    {weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false});
+}
+
+function _bpText(id, text) {
+  const el = document.getElementById(id);
+  if (el && el.textContent !== text) el.textContent = text;
 }
 
 function updateTriggerUI() {
-  const activeMode = statusData.active_mode || '—';
-
-  MODES.forEach(mode => {
-    const el = document.getElementById('tcountdown-' + mode);
-    if (!el) return;
-    if (timeds[mode]) {
-      const rem = timeds[mode].expiresAt - Date.now();
-      el.textContent = rem > 0 ? fmtMs(timeds[mode].expiresAt) + ' remaining' : '';
-    } else {
-      el.textContent = '';
-    }
-    const card = document.getElementById('tcard-' + mode);
-    if (card) {
-      const isActive = activeMode === mode;
-      card.classList.toggle('is-active', isActive);
-      const isAuto = isActive && statusData.trigger_sources && statusData.trigger_sources[mode] === 'auto';
-      card.classList.toggle('auto-triggered', isAuto);
-    }
+  const active = statusData.active_mode;
+  // nothing latched and nothing counting down means the scheduler is driving
+  const auto = manuals.size === 0 && Object.keys(timeds).length === 0;
+  document.getElementById('pgrid-auto')?.classList.toggle('on', auto);
+  document.querySelectorAll('.trig-seg').forEach(seg => {
+    const always = seg.querySelector('.trig-seg-always');
+    if (always) always.classList.toggle('on', manuals.has(seg.dataset.mode));
   });
-
-  const modeText = LABELS[activeMode] || activeMode;
-  document.getElementById('trig-mode-text').textContent = modeText;
-
-  let typeText = 'auto (scheduler)';
-  let countdown = null;
-
-  if (manuals.has(activeMode)) {
-    typeText = 'Manual lock — indefinite';
-  } else if (timeds[activeMode]) {
-    const rem = timeds[activeMode].expiresAt - Date.now();
-    typeText = 'Timed';
-    countdown = rem > 0 ? fmtMs(timeds[activeMode].expiresAt) + ' remaining' : 'Expired';
-  } else {
-    const holdBtn = document.querySelector('.btn-hold.holding');
-    if (holdBtn) typeText = 'Hold — while pressed';
-  }
-
-  document.getElementById('trig-type-text').textContent = typeText;
-  const cdEl = document.getElementById('trig-countdown');
-  if (countdown) { cdEl.textContent = countdown; cdEl.style.display = ''; }
-  else { cdEl.style.display = 'none'; }
+  document.querySelectorAll('.pgrid-tile[data-mode]').forEach(tile => {
+    const m = tile.dataset.mode;
+    tile.classList.toggle('active', m === active);
+    tile.classList.toggle('held', manuals.has(m));
+    tile.classList.toggle('timed', !!timeds[m]);
+    const count = tile.querySelector('.pgrid-count');
+    // a timed trigger can still arrive from a shortcut even though the ui cannot set one
+    if (count) count.textContent = timeds[m] ? fmtMs(timeds[m].expiresAt) : '';
+  });
 }
 
 function setField(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
   if (el.type === 'checkbox') el.checked = !!value;
-  else if (el.type === 'color') el.value = Array.isArray(value) ? rgbToHex(value) : '#000000';
+  else if (el.type === 'color') {
+    el.value = Array.isArray(value) ? rgbToHex(value) : '#000000';
+    const hexEl = document.getElementById(id + '_hex');
+    if (hexEl) hexEl.textContent = el.value.toUpperCase();
+  }
   else if (el.type === 'range') {
     el.value = value;
-    const v = el.nextElementSibling;
+    const v = el.parentElement.querySelector('.val');
     if (v) v.textContent = String(v.textContent).endsWith('%')
       ? Math.round(value*100) + '%'
       : String(v.textContent).endsWith('s') ? value + 's' : value;
@@ -399,12 +730,9 @@ function setField(id, value) {
 }
 
 function _applyVisibility(prefix, mode, cfg_section) {
-  const enabled = cfg_section.enabled ?? true;
-  const el = document.getElementById(prefix + '_settings');
-  if (el) el.style.display = enabled ? '' : 'none';
   const useGlobal = cfg_section.use_global_brightness ?? false;
   document.getElementById(prefix + '_use_global').checked = useGlobal;
-  document.getElementById(prefix + '_brightness_row').style.display = useGlobal ? 'none' : '';
+  _paintBrightnessRow(prefix, useGlobal);
 }
 
 function populate() {
@@ -415,61 +743,58 @@ function populate() {
   const md = cfg.dashboard         || {};
   const w  = md.weather            || {};
 
-  setField('mac_address',   d.mac_address);
   setField('d_brightness',  d.brightness ?? 50); nxt(document.getElementById('d_brightness'), x=>x);
-  setField('flip_v',        d.flip_vertical);
-  setField('flip_h',        d.flip_horizontal);
-  setField('reconnect_delay', d.reconnect_delay ?? 3);
+  const mac = (d.mac_address || '').toUpperCase();
+  for (let i = 0; i < 6; i++) {
+    const el = document.getElementById('mac' + i);
+    if (el) el.value = mac.split(':')[i] || '';
+  }
+  document.getElementById('flip_h').classList.toggle('on', !!d.flip_horizontal);
+  document.getElementById('flip_v').classList.toggle('on', !!d.flip_vertical);
   setField('d_start_powered_off', d.start_powered_off ?? false);
   if (d.active_hours) {
     document.getElementById('d_always_on').checked = false;
-    document.getElementById('d_hours_row').style.display = '';
+    document.getElementById('d_hours_row').style.display = 'flex';
+    document.getElementById('d_after_hours_sleep_row').style.display = '';
     setField('d_hour_from', d.active_hours[0]);
     setField('d_hour_to',   d.active_hours[1]);
   } else {
     document.getElementById('d_always_on').checked = true;
     document.getElementById('d_hours_row').style.display = 'none';
+    document.getElementById('d_after_hours_sleep_row').style.display = 'none';
   }
   const sleepEnabled = d.after_hours_sleep_timer_enabled ?? false;
   setField('d_after_hours_sleep_enabled', sleepEnabled);
-  document.getElementById('d_after_hours_sleep_row').style.display = sleepEnabled ? '' : 'none';
+  document.getElementById('d_after_hours_sleep_slider').style.display = sleepEnabled ? 'flex' : 'none';
   setField('d_after_hours_sleep_minutes', d.after_hours_sleep_timer_minutes ?? 30);
   nxt(document.getElementById('d_after_hours_sleep_minutes'), x=>x+'m');
 
-  setField('cl_enabled',    cl.enabled);
   document.getElementById('prio-sel-clock').value = cl.priority ?? 1;
   _applyVisibility('cl', 'clock', cl);
   setField('cl_brightness', cl.brightness ?? 1); nxt(document.getElementById('cl_brightness'), x=>x);
-  setField('cl_blink',      cl.blink_interval ?? 2); nxt(document.getElementById('cl_blink'), x=>x+'s');
+  document.getElementById('cl_blink').value = cl.blink_interval ?? 1;
   setField('cl_color',      cl.color || [0,255,0]);
 
-  setField('v_enabled',    v.enabled);
   document.getElementById('prio-sel-verse_of_day').value = v.priority ?? 2;
+  document.getElementById('v_translation').value = v.translation ?? 'bibleapi:kjv';
   setField('v_duration',   Math.round((v.min_duration_s ?? 120) / 60));
-  const prob = Math.round((v.probability ?? 0.3)*100);
-  setField('v_prob', prob); document.querySelector('#v_prob+.val').textContent = prob + '%';
+  document.getElementById('v_prob').value = Math.round((v.probability ?? 0.3)*100);
   _applyVisibility('v', 'verse_of_day', v);
   setField('v_brightness', v.brightness ?? 100); nxt(document.getElementById('v_brightness'), x=>x);
   setField('v_color', v.color || [125,40,125]);
   if (v.active_hours) {
     document.getElementById('v_allhours').checked = false;
-    document.getElementById('v_hours_row').style.display = '';
+    document.getElementById('v_hours_row').style.display = 'flex';
     setField('v_hour_from', v.active_hours[0]);
     setField('v_hour_to',   v.active_hours[1]);
   }
 
-  setField('np_enabled',   np.enabled);
   setField('np_scrobbler', np.scrobbler ?? 'lastfm');
   document.getElementById('prio-sel-nowplaying').value = np.priority ?? 3;
   _applyVisibility('np', 'nowplaying', np);
   setField('np_brightness',np.brightness ?? 50); nxt(document.getElementById('np_brightness'), x=>x);
   setField('np_font',      np.font ?? 3);
-  setField('np_slot_a',    np.slot_a ?? 0);
-  setField('np_slot_b',    np.slot_b ?? 1);
-  setField('np_chunk_s',   np.chunk_s ?? 20);
-  setField('np_poll_s',    np.poll_s ?? 0.5);
 
-  setField('md_enabled',   md.enabled);
   document.getElementById('prio-sel-dashboard').value = md.priority ?? 4;
   setField('md_duration',  Math.round((md.min_duration_s ?? 3600) / 60));
   _applyVisibility('md', 'dashboard', md);
@@ -477,15 +802,17 @@ function populate() {
   setField('md_auto_cal',     md.auto_trigger_on_calendar ?? true);
   setField('md_before_event', md.auto_trigger_before_event ?? false);
   setField('md_hours_before', md.hours_before_event ?? 2.0);
-  document.getElementById('md_hours_before_row').style.display = (md.auto_trigger_before_event ?? false) ? '' : 'none';
+  document.getElementById('md_hours_before_row').style.display = (md.auto_trigger_before_event ?? false) ? 'flex' : 'none';
   const graceMin = md.grace_minutes ?? 0;
   setField('md_grace', graceMin > 0);
   setField('md_grace_minutes', graceMin || 10);
-  document.getElementById('md_grace_row').style.display = graceMin > 0 ? '' : 'none';
+  document.getElementById('md_grace_row').style.display = graceMin > 0 ? 'flex' : 'none';
 
   const provider = w.provider ?? 'openmeteo';
   setField('w_provider', provider);
-  setField('w_units',    w.units    ?? 'metric');
+  const units = w.units ?? 'metric';
+  document.getElementById('w_u_metric').classList.toggle('on', units === 'metric');
+  document.getElementById('w_u_imperial').classList.toggle('on', units === 'imperial');
   setField('w_lat',      w.lat ?? '');
   setField('w_lon',      w.lon ?? '');
   setField('w_location', w.location ?? '');
@@ -499,8 +826,7 @@ function _reconcileTriggerState() {
 
   MODES.forEach(mode => {
     // A "Hold to Trigger" press is a brief, local-only interaction, don't let a status poll landing mid-press reclassify it as a manual lock.
-    const holdBtn = document.querySelector(`.btn-hold.holding`);
-    if (holdBtn && holdBtn.closest(`#tcard-${mode}`)) return;
+    if (mode === _pressMode || mode === _segHolding) return;
 
     const isUserTriggered = triggered.has(mode) && sources[mode] === 'user';
     const serverExpiresAt = expiries[mode] != null ? expiries[mode] * 1000 : null;
@@ -541,13 +867,25 @@ function _reconcileTriggerState() {
 async function loadStatus() {
   try {
     statusData = await fetch('/status').then(r => r.json());
-    document.getElementById('s-mode').textContent  = (statusData.active_mode || '—').replace(/_/g,' ');
-    document.getElementById('s-since').textContent = fmtDur(Math.round(statusData.active_for_s || 0));
-    if (!statusData.connected && statusData.in_active_hours) {
-      _showConnecting();
+    _linkUp   = !!statusData.connected;
+    _retrying = !!statusData.reconnecting;
+    _retryAt  = statusData.reconnect_in_s != null ? Date.now() + statusData.reconnect_in_s * 1000 : 0;
+    if (statusData.connected) {
+      const forS = statusData.connected_for_s;
+      // re-anchoring every poll would pin the readout at zero, only correct real drift
+      if (forS == null) {
+        if (!_uptimeAt) { _uptimeBase = 0; _uptimeAt = Date.now(); }
+      } else if (!_uptimeAt || Math.abs(_uptimeBase + (Date.now() - _uptimeAt) / 1000 - forS) > 3) {
+        _uptimeBase = forS;
+        _uptimeAt   = Date.now();
+      }
     } else {
-      _hideConnecting();
+      _uptimeBase = 0;
+      _uptimeAt   = 0;
     }
+    paintPill();
+    tickHeaderClock();
+    // display_on is the scheduler's own flag, a dropped link says nothing about it
     const serverDisplayOn = statusData.display_on ?? true;
     if (serverDisplayOn !== _displayOn) {
       _displayOn = serverDisplayOn;
@@ -561,17 +899,21 @@ async function loadStatus() {
     _reconcileTriggerState();
     updateTriggerUI();
   } catch {
-    _showConnecting();
+    _linkUp = false;
+    paintPill();
+    tickHeaderClock();
   }
 }
 
 function toggleAfterHoursSleepTimer(enabled) {
-  document.getElementById('d_after_hours_sleep_row').style.display = enabled ? '' : 'none';
+  const slider = document.getElementById('d_after_hours_sleep_slider');
+  if (slider) slider.style.display = enabled ? 'flex' : 'none';
   save('device', 'after_hours_sleep_timer_enabled', enabled);
 }
 
 function toggleActiveHours(alwaysOn) {
-  document.getElementById('d_hours_row').style.display = alwaysOn ? 'none' : '';
+  const row = document.getElementById('d_hours_row');
+  if (row) row.style.display = alwaysOn ? 'none' : 'flex';
   if (alwaysOn) save('device', 'active_hours', null);
   else saveActiveHours();
 }
@@ -582,7 +924,7 @@ function saveActiveHours() {
 }
 
 function toggleHours(allHours) {
-  document.getElementById('v_hours_row').style.display = allHours ? 'none' : '';
+  document.getElementById('v_hours_row').style.display = allHours ? 'none' : 'flex';
   if (allHours) save('verse_of_day','active_hours',null);
 }
 function saveHours() {
@@ -591,15 +933,21 @@ function saveHours() {
     +document.getElementById('v_hour_to').value
   ]);
 }
+function setUnits(units) {
+  document.getElementById('w_u_metric').classList.toggle('on', units === 'metric');
+  document.getElementById('w_u_imperial').classList.toggle('on', units === 'imperial');
+  saveWeather();
+}
 function onWeatherProviderChange() {
   const provider = document.getElementById('w_provider').value;
   document.getElementById('w_location_row').style.display = provider === 'wttr' ? '' : 'none';
   saveWeather();
 }
 function saveWeather() {
+  const units = document.getElementById('w_u_imperial').classList.contains('on') ? 'imperial' : 'metric';
   save('dashboard','weather',{
     provider: document.getElementById('w_provider').value,
-    units:    document.getElementById('w_units').value,
+    units:    units,
     lat:      +document.getElementById('w_lat').value || null,
     lon:      +document.getElementById('w_lon').value || null,
     location: document.getElementById('w_location').value || null,
@@ -679,7 +1027,7 @@ const WH_VAR_GROUPS = [
   ]},
 ];
 const WH_VAR_GROUPS_VERSE = [
-  { label: 'Verse', vars: ['reference'] },
+  { label: 'Verse', vars: ['reference', 'text'] },
   { label: 'Color', vars: ['accent1_hex','accent1_rgb','accent1_r','accent1_g','accent1_b'] },
   { label: 'HSV', vars: ['accent1_hsv','accent1_h','accent1_s','accent1_v'] },
   { label: 'Full Brightness', vars: ['accent1_full_hex','accent1_full_rgb','accent1_full_r','accent1_full_g','accent1_full_b'] },
@@ -693,6 +1041,10 @@ function toggleWebhooksEnabled(section, enabled) {
   const card = document.getElementById('wh-' + _whContainerId(section));
   const inner = card?.querySelector('.wh-card-inner');
   if (inner) inner.style.display = enabled ? '' : 'none';
+}
+
+function _whTitle(section) {
+  return {clock:'Clock', verse_of_day:'Verse', nowplaying:'NowPlaying', dashboard:'Dashboard', device:'Device'}[section] + ' Webhooks';
 }
 
 function _whContainerId(section) {
@@ -711,7 +1063,7 @@ function buildWebhookCard(section, containerId) {
 
   const title = document.createElement('div');
   title.className = 'card-title';
-  title.innerHTML = `Webhooks
+  title.innerHTML = `${_whTitle(section)}
     <label class="toggle" style="margin-left:auto">
       <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleWebhooksEnabled('${section}',this.checked)">
       <div class="t-track"></div><div class="t-thumb"></div>
@@ -913,12 +1265,91 @@ function refreshAllWebhookCards() {
 }
 
 async function init() {
-  cfg = await fetch('/config').then(r => r.json());
-  populate();
-  buildTriggerCards();
-  refreshAllWebhookCards();
-  await loadStatus();
-  _pollTimer = setInterval(_tick, POLL_ACTIVE);
+  try {
+    cfg = await fetch('/config').then(r => r.json());
+    populate();
+    buildPanelGrid();
+    buildPanelTabs();
+    buildPanelIcons();
+    buildEnabledList();
+    initTriggerSegs();
+    initHexLabels();
+    refreshAllWebhookCards();
+    initMacFields();
+    initAppearance();
+    await loadStatus();
+    _pollTimer = setInterval(_tick, POLL_ACTIVE);
+    setInterval(pollHome, 1000);
+    tickHeaderClock();
+    setInterval(tickHeaderClock, 1000);
+  } catch (e) {
+    console.error('init failed:', e);
+  }
+}
+
+function initAppearance() {
+  setThemeMode(getCookie('spd_theme') || localStorage.getItem('theme') || 'dark');
+  setAccent(getCookie('spd_accent') || localStorage.getItem('accent') || '#87a878');
+  _applyPreviewMode(getCookie('spd_preview') || 'web');
+}
+
+function flipToggle(key) {
+  const el = document.getElementById(key === 'flip_horizontal' ? 'flip_h' : 'flip_v');
+  const on = !el.classList.contains('on');
+  el.classList.toggle('on', on);
+  save('device', key, on);
+}
+
+function initHexLabels() {
+  document.querySelectorAll('.color-hex').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      const hex = el.textContent.trim();
+      if (!hex.startsWith('#') || hex.length !== 7) return;
+      el.dataset.hex = hex;
+      el.textContent = 'RGB(' + hexToRgb(hex).join(', ') + ')';
+    });
+    el.addEventListener('mouseleave', () => {
+      if (!el.dataset.hex) return;
+      el.textContent = el.dataset.hex;
+      delete el.dataset.hex;
+    });
+  });
+}
+
+function initMacFields() {
+  const inputs = [];
+  for (let i = 0; i < 6; i++) inputs.push(document.getElementById('mac' + i));
+  inputs.forEach((inp, i) => {
+    if (!inp) return;
+    inp.addEventListener('input', function() {
+      let v = this.value.replace(/[^0-9A-Fa-f]/g, '').toUpperCase().slice(0, 2);
+      this.value = v;
+      if (v.length === 2 && i < 5) inputs[i + 1].focus();
+      trySaveMac();
+    });
+    inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Backspace' && this.value === '' && i > 0) inputs[i - 1].focus();
+    });
+    inp.addEventListener('paste', function(e) {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+      for (let k = 0; k < 6 && k * 2 < text.length; k++) {
+        if (inputs[k]) inputs[k].value = text.slice(k * 2, k * 2 + 2);
+      }
+      trySaveMac();
+    });
+    inp.addEventListener('blur', trySaveMac);
+  });
+}
+
+function trySaveMac() {
+  const parts = [];
+  for (let i = 0; i < 6; i++) {
+    const v = document.getElementById('mac' + i)?.value || '';
+    if (v.length < 2) return;
+    parts.push(v);
+  }
+  save('device', 'mac_address', parts.join(':'));
 }
 
 init();
