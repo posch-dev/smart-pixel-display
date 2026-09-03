@@ -6,10 +6,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import asyncio
 import io
 import binascii
+import urllib.parse
 import requests
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-from dotenv import load_dotenv
 from pypixelcolor import AsyncClient
 import assets.system.config as config
 
@@ -20,59 +20,98 @@ BACKGROUND       = (0, 0, 0)
 
 FONT_PATH  = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts", "PerfectDOS_VGA_437.ttf")
 
-CROSS_W    = 21         # odd so center pixel is exact
-CROSS_BAR  = 5          # thickness of both bars
-CROSS_GAP  = 4          # gap between cross area and text
+CROSS_W    = 21
+CROSS_BAR  = 5
+CROSS_GAP  = 4
 
-BOOK_FONT_SIZE = 14     # book name rendered height in pixels
-NUM_FONT_SIZE  = 14     # chapter:verse rendered height in pixels
-WORD_GAP       = 2      # px between numeric prefix and book name (instead of full space)
+BOOK_FONT_SIZE = 14
+NUM_FONT_SIZE  = 14
+WORD_GAP       = 2
 
-BOOK_NAMES = {
-    "GEN":"Genesis","EXO":"Exodus","LEV":"Leviticus","NUM":"Numbers","DEU":"Deuteronomy",
-    "JOS":"Joshua","JDG":"Judges","RUT":"Ruth","1SA":"1 Samuel","2SA":"2 Samuel",
-    "1KI":"1 Kings","2KI":"2 Kings","1CH":"1 Chronicles","2CH":"2 Chronicles",
-    "EZR":"Ezra","NEH":"Nehemiah","EST":"Esther","JOB":"Job","PSA":"Psalms",
-    "PRO":"Proverbs","ECC":"Ecclesiastes","SNG":"Song of Solomon","ISA":"Isaiah",
-    "JER":"Jeremiah","LAM":"Lamentations","EZK":"Ezekiel","DAN":"Daniel",
-    "HOS":"Hosea","JOL":"Joel","AMO":"Amos","OBA":"Obadiah","JON":"Jonah",
-    "MIC":"Micah","NAM":"Nahum","HAB":"Habakkuk","ZEP":"Zephaniah","HAG":"Haggai",
-    "ZEC":"Zechariah","MAL":"Malachi","MAT":"Matthew","MRK":"Mark","LUK":"Luke",
-    "JHN":"John","ACT":"Acts","ROM":"Romans","1CO":"1 Corinthians","2CO":"2 Corinthians",
-    "GAL":"Galatians","EPH":"Ephesians","PHP":"Philippians","COL":"Colossians",
-    "1TH":"1 Thessalonians","2TH":"2 Thessalonians","1TI":"1 Timothy","2TI":"2 Timothy",
-    "TIT":"Titus","PHM":"Philemon","HEB":"Hebrews","JAS":"James","1PE":"1 Peter",
-    "2PE":"2 Peter","1JN":"1 John","2JN":"2 John","3JN":"3 John","JUD":"Jude",
-    "REV":"Revelation",
+# bolls.life needs book numbers. All 66 books, normalized uppercase, with common variants.
+_BOOK_NUMS = {
+    "GENESIS": 1, "EXODUS": 2, "LEVITICUS": 3, "NUMBERS": 4, "DEUTERONOMY": 5,
+    "JOSHUA": 6, "JUDGES": 7, "RUTH": 8, "1 SAMUEL": 9, "2 SAMUEL": 10,
+    "1 KINGS": 11, "2 KINGS": 12, "1 CHRONICLES": 13, "2 CHRONICLES": 14,
+    "EZRA": 15, "NEHEMIAH": 16, "ESTHER": 17, "JOB": 18, "PSALMS": 19,
+    "PSALM": 19, "PROVERBS": 20, "ECCLESIASTES": 21, "SONG OF SOLOMON": 22,
+    "SONG OF SONGS": 22, "ISAIAH": 23, "JEREMIAH": 24, "LAMENTATIONS": 25,
+    "EZEKIEL": 26, "DANIEL": 27, "HOSEA": 28, "JOEL": 29, "AMOS": 30,
+    "OBADIAH": 31, "JONAH": 32, "MICAH": 33, "NAHUM": 34, "HABAKKUK": 35,
+    "ZEPHANIAH": 36, "HAGGAI": 37, "ZECHARIAH": 38, "MALACHI": 39,
+    "MATTHEW": 40, "MARK": 41, "LUKE": 42, "JOHN": 43, "ACTS": 44,
+    "ROMANS": 45, "1 CORINTHIANS": 46, "2 CORINTHIANS": 47, "GALATIANS": 48,
+    "EPHESIANS": 49, "PHILIPPIANS": 50, "COLOSSIANS": 51,
+    "1 THESSALONIANS": 52, "2 THESSALONIANS": 53, "1 TIMOTHY": 54,
+    "2 TIMOTHY": 55, "TITUS": 56, "PHILEMON": 57, "HEBREWS": 58,
+    "JAMES": 59, "1 PETER": 60, "2 PETER": 61, "1 JOHN": 62,
+    "2 JOHN": 63, "3 JOHN": 64, "JUDE": 65, "REVELATION": 66,
 }
 
-
-def passage_id_to_reference(passage_id: str) -> str:
-    # Convert 'JHN.3.16' → 'JOHN 3:16'.
-    parts = passage_id.split(".")
-    book = BOOK_NAMES.get(parts[0], parts[0])
-    return f"{book} {parts[1]}:{parts[2]}".upper()
+_session = requests.Session()
 
 
-def fetch_reference() -> str:
-    load_dotenv()
-    app_key = os.getenv("YOUVERSION")
-    if not app_key:
-        raise RuntimeError("YOUVERSION key missing — add it to .env")
+def _parse_reference(ref: str):
+    # "1 CORINTHIANS 13:2" -> ("1 CORINTHIANS", 13, 2, 2)
+    # "ROMANS 15:1-2" -> ("ROMANS", 15, 1, 2)
+    book, rest = ref.rsplit(" ", 1)
+    chapter, verses = rest.split(":")
+    if "-" in verses:
+        v_from, v_to = verses.split("-", 1)
+    else:
+        v_from = v_to = verses
+    return book, int(chapter), int(v_from), int(v_to)
 
-    day_of_year = datetime.now().timetuple().tm_yday
-    response = requests.get(
-        f"https://api.youversion.com/v1/verse_of_the_days/{day_of_year}",
-        headers={"X-YVP-App-Key": app_key},
+
+def fetch_votd() -> dict:
+    # OurManna — reference + text, no key. Reference uppercased for the panel.
+    r = _session.get(
+        "https://beta.ourmanna.com/api/v1/get/",
+        params={"format": "json", "order": "daily"},
         timeout=10,
     )
-    response.raise_for_status()
-    passage_id = response.json()["passage_id"]
-    return passage_id_to_reference(passage_id)
+    r.raise_for_status()
+    details = r.json()["verse"]["details"]
+    return {
+        "reference": details["reference"].upper(),
+        "text": details["text"],
+    }
+
+
+def fetch_passage(translation: str, reference: str) -> str:
+    # translation is "backend:id" — "bibleapi:kjv", "bolls:ESV", etc.
+    backend, tr_id = translation.split(":", 1)
+    if backend == "bibleapi":
+        return _fetch_bibleapi(tr_id, reference)
+    if backend == "bolls":
+        return _fetch_bolls(tr_id, reference)
+    raise ValueError(f"unknown translation backend: {backend}")
+
+
+def _fetch_bibleapi(tr_id: str, reference: str) -> str:
+    url = f"https://bible-api.com/{urllib.parse.quote(reference)}"
+    r = _session.get(url, params={"translation": tr_id}, timeout=10)
+    r.raise_for_status()
+    return r.json()["text"].strip()
+
+
+def _fetch_bolls(tr_id: str, reference: str) -> str:
+    book, chapter, v_from, v_to = _parse_reference(reference)
+    num = _BOOK_NUMS.get(book)
+    if num is None:
+        raise ValueError(f"no book number for {book!r}")
+    parts = []
+    for v in range(v_from, v_to + 1):
+        r = _session.get(
+            f"https://bolls.life/get-verse/{tr_id}/{num}/{chapter}/{v}/",
+            timeout=10,
+        )
+        r.raise_for_status()
+        parts.append(r.json()["text"].strip())
+    return " ".join(parts)
 
 
 def _natural_font(size: int) -> tuple:
-    # Return (font, scale) where font is the smallest pt that renders 'A' >= size px.
     probe = ImageDraw.Draw(Image.new("RGB", (500, 200)))
     pt = size
     while True:
@@ -85,7 +124,6 @@ def _natural_font(size: int) -> tuple:
 
 
 def _render_str(text: str, size: int, color: tuple) -> Image.Image:
-    # Render a plain string at natural pt, scaled to `size` px height with NEAREST.
     font, scale = _natural_font(size)
     probe = ImageDraw.Draw(Image.new("RGB", (500, 200)))
     bb = probe.textbbox((0, 0), text, font=font)
@@ -96,7 +134,6 @@ def _render_str(text: str, size: int, color: tuple) -> Image.Image:
 
 
 def _text_img(text: str, size: int, color: tuple) -> Image.Image:
-    # Render with NEAREST scaling. Numeric prefixes like '1 KINGS' get WORD_GAP instead of a full space.
     parts = text.split(" ", 1)
     if len(parts) == 2 and parts[0].isdigit():
         a = _render_str(parts[0], size, color)
@@ -109,7 +146,6 @@ def _text_img(text: str, size: int, color: tuple) -> Image.Image:
 
 
 def _truncate(text: str, size: int, max_w: int) -> str:
-    # Trim until it fits within max_w px, accounting for WORD_GAP with numeric prefixes.
     font, scale = _natural_font(size)
     probe = ImageDraw.Draw(Image.new("RGB", (500, 200)))
 
@@ -142,16 +178,9 @@ def _draw_cross(draw: ImageDraw.ImageDraw, x: int, display_h: int, color: tuple)
 
 
 def render_reference(text: str, display_w: int, display_h: int, color: tuple | None = None) -> str:
-    # Render cross + book name + chapter:verse, centered on the display.
-    # Reads the color from config at call time (not import time) so a settings change takes effect immediately.
     color = tuple(color) if color is not None else tuple(config.get("verse_of_day", "color", [125, 40, 125]))
     text_gap = display_h - BOOK_FONT_SIZE - NUM_FONT_SIZE
     if text_gap < 0:
-        print(
-            f"ERROR: font sizes ({BOOK_FONT_SIZE}px + {NUM_FONT_SIZE}px = "
-            f"{BOOK_FONT_SIZE + NUM_FONT_SIZE}px) exceed display height ({display_h}px) — "
-            "showing error frame"
-        )
         img  = Image.new("RGB", (display_w, display_h), BACKGROUND)
         sq   = max(2, display_h // 4)
         cx, cy = display_w // 2, display_h // 2
@@ -180,7 +209,6 @@ def render_reference(text: str, display_w: int, display_h: int, color: tuple | N
     draw = ImageDraw.Draw(img)
     _draw_cross(draw, x=start_x, display_h=display_h, color=color)
 
-    # book snaps to top, numbers centered under book and snapped to bottom
     num_x = text_x + (book_img.width - num_img.width) // 2
     img.paste(book_img, (text_x, 0), book_img)
     img.paste(num_img,  (num_x, display_h - NUM_FONT_SIZE), num_img)
@@ -193,8 +221,8 @@ def render_reference(text: str, display_w: int, display_h: int, color: tuple | N
 
 async def run() -> None:
     print("Fetching verse of the day ...")
-    reference = fetch_reference()
-    print(f"Reference: {reference}")
+    votd = fetch_votd()
+    print(f"Reference: {votd['reference']}")
 
     print(f"Connecting to {MAC_ADDRESS} ...")
     async with AsyncClient(MAC_ADDRESS) as client:
@@ -202,7 +230,7 @@ async def run() -> None:
         display_w, display_h = info.width, info.height
         print(f"Display: {display_w}x{display_h}")
 
-        frame = render_reference(reference, display_w, display_h)
+        frame = render_reference(votd["reference"], display_w, display_h)
 
         await client.set_brightness(BRIGHTNESS)
         print("Displaying — press Ctrl+C to stop.")

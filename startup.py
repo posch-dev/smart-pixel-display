@@ -18,7 +18,7 @@ import assets.system.scheduler as scheduler
 import assets.system.api as api
 import assets.system.webhooks as webhooks
 from panels.clock.main import DISPLAY_W, DISPLAY_H, render_frame
-from panels.verse_of_day.main import fetch_reference, render_reference, FONT_PATH as _VERSE_FONT_PATH
+from panels.verse_of_day.main import fetch_votd, fetch_passage, render_reference, FONT_PATH as _VERSE_FONT_PATH
 
 _MD_DIR = os.path.join(os.path.dirname(__file__), "panels", "dashboard")
 _NP_DIR = os.path.join(os.path.dirname(__file__), "panels", "now_playing")
@@ -66,20 +66,21 @@ async def _wait_for_active_hour() -> None:
 
 _VERSE_CACHE_DIR  = os.path.join(os.path.dirname(__file__), "panels", "verse_of_day")
 _VERSE_CACHE_GLOB = os.path.join(_VERSE_CACHE_DIR, ".verse_cache_*.json")
+_VERSE_CACHE_SCHEMA = 2
 _verse_frame:     str | None = None
 _verse_cache_key: str | None = None
 _verse_reference: str | None = None
+_verse_text:      str | None = None
 
 
 def _verse_key() -> str:
-    # Only the reference lookup is day-scoped; color/brightness/flip/font changes must
-    # re-render immediately without re-hitting the YouVersion API.
-    color      = str(config.get("verse_of_day", "color", [125, 40, 125]))
-    brightness = str(max(1, config.get("verse_of_day", "brightness", 100)))
-    flip_v     = str(config.get("device", "flip_vertical",   False))
-    flip_h     = str(config.get("device", "flip_horizontal", False))
-    font       = os.path.basename(_VERSE_FONT_PATH)
-    return f"{datetime.now().strftime('%Y-%m-%d')}|{color}|{brightness}|{flip_v}|{flip_h}|{font}"
+    color       = str(config.get("verse_of_day", "color", [125, 40, 125]))
+    brightness  = str(max(1, config.get("verse_of_day", "brightness", 100)))
+    flip_v      = str(config.get("device", "flip_vertical",   False))
+    flip_h      = str(config.get("device", "flip_horizontal", False))
+    font        = os.path.basename(_VERSE_FONT_PATH)
+    translation = str(config.get("verse_of_day", "translation", "bibleapi:kjv"))
+    return f"{datetime.now().strftime('%Y-%m-%d')}|{translation}|{color}|{brightness}|{flip_v}|{flip_h}|{font}"
 
 def _verse_cache_path() -> str:
     return os.path.join(_VERSE_CACHE_DIR, f".verse_cache_{datetime.now().strftime('%Y-%m-%d')}.json")
@@ -95,7 +96,7 @@ def _purge_old_verse_caches() -> None:
                 pass
 
 def get_verse_frame() -> str | None:
-    global _verse_frame, _verse_cache_key, _verse_reference
+    global _verse_frame, _verse_cache_key, _verse_reference, _verse_text
     key = _verse_key()
     if _verse_frame and _verse_cache_key == key:
         return _verse_frame
@@ -108,23 +109,59 @@ def get_verse_frame() -> str | None:
                 cached = json.load(f)
         except Exception:
             cached = {}
+    if cached.get("schema") != _VERSE_CACHE_SCHEMA:
+        cached = {}
     try:
         reference = cached.get("reference")
+        ourmanna_text = cached.get("text")
         if reference is None:
             print(f"{_ts()} [verse] Fetching ...")
-            reference = fetch_reference()
+            votd = fetch_votd()
+            reference = votd["reference"]
+            ourmanna_text = votd["text"]
+        translation = config.get("verse_of_day", "translation", "bibleapi:kjv")
+        text = cached.get("translation") == translation and cached.get("passage")
+        passage = cached.get("passage") if text else None
+        if passage is None or cached.get("translation") != translation:
+            try:
+                passage = fetch_passage(translation, reference)
+            except Exception as e:
+                print(f"{_ts()} [verse] passage fetch failed ({e}) — using OurManna text")
+                passage = ourmanna_text
         color = tuple(config.get("verse_of_day", "color", [125, 40, 125]))
         _verse_frame = render_reference(reference, DISPLAY_W, DISPLAY_H, color=color)
         _verse_cache_key = key
         _verse_reference = reference
-        cached.update({"reference": reference, "key": key, "frame": _verse_frame})
+        _verse_text = passage
+        cached.update({
+            "schema": _VERSE_CACHE_SCHEMA,
+            "reference": reference,
+            "text": ourmanna_text,
+            "translation": translation,
+            "passage": passage,
+            "key": key,
+            "frame": _verse_frame,
+        })
         with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(cached, f)
+            json.dump(cached, f, ensure_ascii=False)
         print(f"{_ts()} [verse] Rendered: {reference}")
     except Exception as e:
         print(f"{_ts()} [verse] Render failed: {e}")
         _verse_frame = _verse_cache_key = None
     return _verse_frame
+
+
+def get_verse_data() -> dict | None:
+    # Return cached verse data for the /home endpoint: reference, passage text, translation.
+    if _verse_reference is None:
+        get_verse_frame()
+    if _verse_reference is None:
+        return None
+    return {
+        "reference": _verse_reference,
+        "text": _verse_text or "",
+        "translation": config.get("verse_of_day", "translation", "bibleapi:kjv"),
+    }
 
 
 def _black_frame() -> str:
@@ -183,18 +220,14 @@ async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
                 color = tuple(config.get("verse_of_day", "color", [125, 40, 125]))
                 asyncio.create_task(webhooks.fire(
                     "verse_of_day", "on_verse_change",
-                    {"reference": _verse_reference, "accent1": color},
+                    {"reference": _verse_reference, "text": _verse_text or "", "accent1": color},
                 ))
             if clearing[0]:
                 frame = _add_clearing_pixel(frame)
             brightness = _get_active_brightness("verse_of_day")
             async with ble_lock:
                 await asyncio.wait_for(client.send_image_hex(frame, ".png"), timeout=BLE_SEND_TIMEOUT)
-                # Re-assert brightness right after the image write — some sends appear
-                # to reset it on-device, which otherwise leaves it wrong for hours.
                 await asyncio.wait_for(client.set_brightness(brightness), timeout=BLE_SEND_TIMEOUT)
-        # Wake immediately on any settings change (color, brightness, flip, refresh
-        # interval, ...) instead of waiting up to `refresh` seconds to re-render.
         await config.wait_for_change(timeout=refresh)
 
 
