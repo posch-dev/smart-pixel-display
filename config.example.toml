@@ -1,7 +1,8 @@
 # smart pixel dashboard, configuration
 #
-# install.sh copies this file to config.toml on a fresh install and never touches
-# it again. The web ui writes config.toml, comments and order survive.
+# The installer writes config.toml from this file on a fresh install and never
+# touches an existing one. The web ui writes config.toml, comments and order
+# survive.
 #
 # Everything the web ui can reach lives in the panel sections below. What it
 # cannot reach sits in [expert] at the bottom and only changes by editing the
