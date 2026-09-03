@@ -382,12 +382,16 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
 // the dashboard is not laid out here. the tile is measured and the file is that
 // measurement blown up, so the two cannot drift apart however the css moves on
 function _rDashboard(scene, t, pal, animate, decl) {
-  const snap = scene.snap;
+  // a minute of the day per second, so the second being drawn picks the picture
+  const snap = scene.frames
+    ? scene.frames[Math.min(scene.frames.length - 1, Math.max(0, Math.floor(t)))]
+    : scene.snap;
   if (!snap || !snap.w) return [];
   const k = R_W / snap.w;
   const half = (scene.blink || 2) / 2;
   const phase = Math.floor(t / half) % 2 === 0;
-  const blink = animate && decl && scene.blink && scene.late && scene.extra && scene.blinkNow;
+  const blink = animate && decl && !scene.frames && scene.blink && scene.late
+             && scene.extra && scene.blinkNow;
   const ops = [];
   for (const o of snap.ops) {
     const x = o.x * k, y = o.y * k;

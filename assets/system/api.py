@@ -3,7 +3,7 @@ import sys
 import time
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, make_response
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -248,6 +248,45 @@ def dashboard_status():
         "calendar": cs.get_events(),
         "weather": weather_text,
     }), 200
+
+
+@app.get("/dashboard/layout")
+def dashboard_layout():
+    md = _rt().md_display
+    at = request.args.get("at")
+    now = _at_time(md, at) if at else None
+    ev = request.args.get("event")
+    pick = None if ev in (None, "") else ("none" if ev == "none" else int(ev))
+    return jsonify(md.layout_state(now, pick)), 200
+
+
+def _at_time(md, hhmm):
+    hh, mm = hhmm.split(":")
+    return datetime.now(md.LOCAL_TZ).replace(hour=int(hh), minute=int(mm),
+                                             second=0, microsecond=0)
+
+
+@app.get("/dashboard/window")
+def dashboard_window():
+    md = _rt().md_display
+    ev = request.args.get("event")
+    index = int(ev) if ev not in (None, "", "none") else md.layout_state().get("index")
+    return jsonify(md.event_window(index) or {}), 200
+
+
+@app.get("/dashboard/layouts")
+def dashboard_layouts():
+    md = _rt().md_display
+    ev = request.args.get("event")
+    # no event named means the calendar as it stands, the panel may move to another one
+    pick = int(ev) if ev not in (None, "", "none") else None
+    cur = _at_time(md, request.args.get("from", "00:00"))
+    stop = _at_time(md, request.args.get("to", "23:59"))
+    out = []
+    while cur <= stop and len(out) < 24 * 60:
+        out.append(md.layout_state(cur, pick))
+        cur += timedelta(minutes=1)
+    return jsonify(out), 200
 
 
 @app.post("/dashboard/trigger")

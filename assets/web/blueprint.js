@@ -206,9 +206,18 @@ const BP_TRANSLATIONS = {
 
 let _bpMode = null;
 
+let _bpLastData = null;
+
+// the tile can be asked to draw itself again from the last reading, which is what the
+// drawer needs while it is paused and what the timelapse needs between two minutes
+function bpRepaint() {
+  if (_bpLastData) updateBlueprint(_bpLastData);
+}
+
 function updateBlueprint(data) {
   const el = document.getElementById('blueprint-content');
   if (!el) return;
+  _bpLastData = data;
   const mode = data.active_mode || 'clock';
   applyActivePreview(mode);
   if (mode !== _bpMode) {
@@ -503,17 +512,34 @@ function _playheadLoop() {
 }
 requestAnimationFrame(_playheadLoop);
 
+// the drawer can stand a layout in for the running one, and a time of day with it
+let _bpDashOv = null;
+
+function setBpDashOverride(ov) {
+  _bpDashOv = ov;
+}
+
+function bpDashOverride() {
+  return _bpDashOv;
+}
+
 function bpDashScene(dash) {
   const w = (dash && dash.weather) || {};
-  const lay = (dash && dash.layout) || {mode: 1};
+  const ov = _bpDashOv;
+  const lay = (ov && ov.layout) || (dash && dash.layout) || {mode: 1};
   const freeze = (dash && dash.units) === 'imperial' ? 32 : 0;
-  const now = new Date();
+  const now = ov && ov.time ? _bpAtTime(ov.time) : new Date();
   const set = document.documentElement.dataset;
+  const rawMode = lay.mode || 1;
+  // weather stands alone when there is nothing else, and until then the choice waits
+  const info = rawMode === 1 ? 'weather' : (set.dInfo || 'both');
   return {
-    // the drawer can pin the tile to the weather layout, and the export follows.
-    // rawMode is what the panel decided, the drawer builds its rows off that
-    mode: set.dOnlyWeather === 'on' ? 1 : (lay.mode || 1),
-    rawMode: lay.mode || 1,
+    mode: info === 'weather' ? 1 : rawMode,
+    rawMode,
+    info,
+    allDay: !!lay.all_day,
+    skipped: !!lay.skipped,
+    index: lay.index === undefined ? null : lay.index,
     extra: set.dExtra !== 'off',
     when: set.dWhen !== 'off',
     blinkNow: set.dBlink !== 'off',
@@ -529,9 +555,17 @@ function bpDashScene(dash) {
     icon: BP_WEATHER_ICONS[w.condition] || '#ico-cloud',
     png: '/assets/weather/' + (BP_WEATHER_PNG[w.condition] || 'cloudy.png'),
     title: lay.title || '',
-    when: lay.start ? (lay.end ? lay.start + ' \u2013 ' + lay.end : lay.start) : '',
+    when: lay.all_day ? 'All Day'
+        : lay.start ? (lay.end ? lay.start + ' \u2013 ' + lay.end : lay.start) : '',
     leaveIn: lay.leave_in, leaveTime: lay.leave_time || '', late: !!lay.late,
   };
+}
+
+function _bpAtTime(hhmm) {
+  const [hh, mm] = hhmm.split(':');
+  const d = new Date();
+  d.setHours(+hh, +mm, 0, 0);
+  return d;
 }
 
 // the panel switches to tenths of an hour once the wait passes an hour
@@ -606,6 +640,7 @@ function _bpDashboard(dash, colors) {
   if (!root) return;
   const sc = bpDashScene(dash);
   root.dataset.dmode = sc.mode;
+  root.dataset.info = sc.info;
   _bpDashLast = sc;
   _bpDashColors(root, sc);
   _bpText('bp-dhh', sc.hh);
@@ -719,14 +754,20 @@ function _bpSnapNode(el, ops, b) {
   const fb = _bpFontBox(cs);
   for (const node of el.childNodes) {
     if (node.nodeType === 1) { _bpSnapNode(node, ops, b); continue; }
-    if (node.nodeType !== 3 || !node.nodeValue.trim()) continue;
+    const raw = node.nodeValue;
+    if (node.nodeType !== 3 || !raw.trim()) continue;
+    // the space around a run is not ink. measuring it in shifts the run by a space
+    // the drawing then adds a second time, and an svg drops it and shifts back
+    const lead = raw.length - raw.replace(/^\s+/, '').length;
+    const word = raw.trim();
     const range = document.createRange();
-    range.selectNodeContents(node);
+    range.setStart(node, lead);
+    range.setEnd(node, lead + word.length);
     const tr = range.getBoundingClientRect();
     if (!tr.width) continue;
     // an inline box is as tall as its font, a block box as tall as its line
     const base = inline ? r.top + fb.asc : tr.top + (tr.height - fb.h) / 2 + fb.asc;
-    ops.push({op: 'text', text: node.nodeValue, fill: cs.color, size: parseFloat(cs.fontSize),
+    ops.push({op: 'text', text: word, fill: cs.color, size: parseFloat(cs.fontSize),
               weight: cs.fontWeight, family: cs.fontFamily, width: tr.width,
               x: tr.left - b.left, y: base - b.top,
               now: el.classList.contains('bp-now')});

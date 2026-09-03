@@ -21,6 +21,9 @@ const EX_STATES = {clock: 2, dashboard: 2};
 const EX_NP_SWEEP_S = 10;
 const EX_LABELS = {clock: 'Clock', verse_of_day: 'Verse', nowplaying: 'NowPlaying', dashboard: 'Dashboard'};
 
+let _exWindow = null;
+let _exAnimKind = null;
+let _exLapse = {from: null, to: null};
 let _exMode = 'clock';
 let _exScene = null;
 let _exOpen = false;
@@ -94,6 +97,22 @@ function _exBuildDialog() {
       <div class="row-right"><label class="toggle"><input type="checkbox" id="ex-anim" onchange="setExAnim()">
         <div class="t-track"></div><div class="t-thumb"></div></label></div>
     </div>
+    <div class="row" id="ex-lapse-row">
+      <div class="row-left"><div class="row-label">Animation</div>
+        <div class="row-sub" id="ex-lapse-why"></div></div>
+      <div class="row-right"><div class="seg" id="ex-kind"></div></div>
+    </div>
+    <div id="ex-lapse-box" style="display:none">
+      <div class="row"><div class="row-left"><div class="row-label">From</div></div>
+        <div class="row-right bright-row" id="ex-from"></div></div>
+      <div class="row"><div class="row-left"><div class="row-label">To</div></div>
+        <div class="row-right bright-row" id="ex-to"></div></div>
+      <div class="row"><div class="row-left"><div class="row-label">This Event Only</div>
+          <div class="row-sub">Off lets the panel move on to the next one</div></div>
+        <div class="row-right"><label class="toggle"><input type="checkbox" id="ex-lapse-one"
+          checked onchange="_exPaint()"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+      </div>
+    </div>
     ${document.getElementById('tab-home') ? `<a href="/preview" target="_blank"
       rel="noopener" class="row ex-more">
       <span>More customization in the <b>Twin</b> Viewer &amp; Editor</span>
@@ -116,6 +135,101 @@ function _exBuildDialog() {
   exVideoProbe();
 }
 
+// a run of minutes is only offered where the panel has an event to run through, and
+// only in the formats that carry one picture after another
+function exLapsable(fmt) {
+  return _exMode === 'dashboard' && !!_exWindow && (fmt === 'gif' || _exIsVideo(fmt));
+}
+
+// three ways for this panel to come out: standing still, NOW taking turns between its
+// colours, or the day running past. a film cannot stand still, and anything that is
+// not on offer falls back to what is
+function exAnimKind(fmt) {
+  const blink = exAnimatable(_exMode, _exScene), lapse = exLapsable(fmt);
+  const want = _exAnimKind || 'blink';
+  if (want === 'still') return _exIsVideo(fmt) ? (blink ? 'blink' : 'lapse') : 'still';
+  if (want === 'lapse' && lapse) return 'lapse';
+  if (want === 'blink' && blink) return 'blink';
+  return blink ? 'blink' : lapse ? 'lapse' : 'still';
+}
+
+function exDashMotion(fmt) {
+  return fmt !== 'png' && (exAnimatable(_exMode, _exScene) || exLapsable(fmt));
+}
+
+function setExAnimKind(kind) {
+  _exAnimKind = kind;
+  _exPaint();
+}
+
+function _exKindSeg(fmt) {
+  const kind = exAnimKind(fmt);
+  const btn = (v, label, live) =>
+    `<button onclick="setExAnimKind('${v}')" class="${kind === v ? 'on' : ''}"
+      ${live ? '' : 'disabled'}>${label}</button>`;
+  return btn('still', 'Still', !_exIsVideo(fmt))
+       + btn('blink', 'Blink', exAnimatable(_exMode, _exScene))
+       + btn('lapse', 'Timelapse', exLapsable(fmt));
+}
+
+function _exLapseOn(fmt) {
+  return exLapsable(fmt) && exAnimKind(fmt) === 'lapse';
+}
+
+function _exMinutes(hhmm) {
+  const [h, m] = hhmm.split(':');
+  return +h * 60 + +m;
+}
+
+function _exHhmm(mins) {
+  return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+}
+
+function _exLapseSpan() {
+  if (!_exWindow) return 0;
+  const a = _exMinutes(_exLapse.from || _exWindow.from);
+  const b = _exMinutes(_exLapse.to || _exWindow.to);
+  return Math.max(1, b - a + 1);
+}
+
+// the dials never leave the window the panel gave, so a run cannot be asked for that
+// the panel would never have shown
+function _exTimeDial(which) {
+  const lo = _exMinutes(_exWindow.from), hi = _exMinutes(_exWindow.to);
+  const at = _exMinutes(_exLapse[which] || _exWindow[which]);
+  let hours = '';
+  for (let h = Math.floor(lo / 60); h <= Math.floor(hi / 60); h++)
+    hours += `<option value="${h}" ${h === Math.floor(at / 60) ? 'selected' : ''}>${String(h).padStart(2, '0')}</option>`;
+  let mins = '';
+  for (let m = 0; m < 60; m++) {
+    const v = Math.floor(at / 60) * 60 + m;
+    if (v < lo || v > hi) continue;
+    mins += `<option value="${m}" ${m === at % 60 ? 'selected' : ''}>${String(m).padStart(2, '0')}</option>`;
+  }
+  return `<select class="pv-sel pv-sel-n" onchange="setExLapseAt('${which}','h',this.value)">${hours}</select>`
+       + `<span class="pv-unit">h</span><span class="pv-colon">:</span>`
+       + `<select class="pv-sel pv-sel-n" onchange="setExLapseAt('${which}','m',this.value)">${mins}</select>`
+       + `<span class="pv-unit">m</span>`;
+}
+
+function setExLapseAt(which, part, v) {
+  const cur = _exMinutes(_exLapse[which] || _exWindow[which]);
+  const mins = part === 'h' ? +v * 60 + cur % 60 : Math.floor(cur / 60) * 60 + +v;
+  const lo = _exMinutes(_exWindow.from), hi = _exMinutes(_exWindow.to);
+  _exLapse[which] = _exHhmm(Math.min(hi, Math.max(lo, mins)));
+  if (_exMinutes(_exLapse.to || _exWindow.to) < _exMinutes(_exLapse.from || _exWindow.from))
+    _exLapse[which === 'from' ? 'to' : 'from'] = _exLapse[which];
+  _exPaint();
+}
+
+// how many pictures and how fast, said the same way wherever it is said
+function _exFrameLabel(frames, sweep) {
+  const one = `${frames} frame${frames === 1 ? '' : 's'}`;
+  if (!frames || !sweep) return one;
+  const fps = frames / sweep;
+  return `${one} @ ${(Math.round(fps * 10) / 10)} fps`;
+}
+
 // mp4 is a film either way, png is one frame either way, so only svg and gif ask
 function _exPaint() {
   const fmt = document.getElementById('ex-format').value;
@@ -124,10 +238,28 @@ function _exPaint() {
   const box = _exBox();
   let size = `${w} x ${2 * Math.round(w * box.h / box.w / 2)} Pixel`;
   if (_exIsVideo(fmt) && _exScene)
-    size += `, ${fmtClock(exSweep(_exMode, _exScene))} at ${EX_VIDEO_FPS} fps`;
+    size += `, ${fmtClock(exSweep(_exMode, _exScene))} @ ${exVideoFps(_exMode, _exScene)} fps`;
   document.getElementById('ex-size').textContent = size;
-  const canAnim = exAnimatable(_exMode, _exScene) && (fmt === 'svg' || fmt === 'gif');
+  // the dashboard says it in one row of three, the other panels keep their tick
+  const dash = _exMode === 'dashboard', motion = dash && exDashMotion(fmt);
+  const canAnim = !dash && exAnimatable(_exMode, _exScene) && (fmt === 'svg' || fmt === 'gif');
   document.getElementById('ex-anim-row').style.display = canAnim ? '' : 'none';
+  document.getElementById('ex-lapse-row').style.display = motion ? '' : 'none';
+  const lapse = _exLapseOn(fmt);
+  document.getElementById('ex-lapse-box').style.display = lapse ? '' : 'none';
+  if (lapse) {
+    document.getElementById('ex-from').innerHTML = _exTimeDial('from');
+    document.getElementById('ex-to').innerHTML = _exTimeDial('to');
+  }
+  if (_exScene) _exScene.lapse = lapse ? _exLapsePlan() : null;
+  if (motion) {
+    const kind = exAnimKind(fmt);
+    document.getElementById('ex-kind').innerHTML = _exKindSeg(fmt);
+    const sweep = _exScene && kind !== 'still' ? exSweep(_exMode, _exScene) : 0;
+    const n = kind === 'still' ? 1
+            : _exScene ? exGifCount(_exMode, sweep, _exScene) : 0;
+    document.getElementById('ex-lapse-why').textContent = _exFrameLabel(n, sweep);
+  }
   // a movable panel is offered moving, until the tick is taken off by hand
   if (canAnim && !_exAnimTouched) document.getElementById('ex-anim').checked = true;
   // a panel with nothing long enough to scroll has no pass to write, and saying so
@@ -152,15 +284,14 @@ function _exPaint() {
   why.textContent = idle ? 'Nothing on this panel is long enough to scroll' : '';
   if (!idle && _exScene && fmt === 'gif' && animBox.checked) {
     const sweep = exSweep(_exMode, _exScene);
-    const frames = exGifCount(_exMode, sweep);
-    why.textContent = `${frames} frame${frames === 1 ? '' : 's'}`
-      + (exStates(_exMode) ? '' : ` at ${exGifFps(_exMode, sweep)} fps`);
+    why.textContent = _exFrameLabel(exGifCount(_exMode, sweep, _exScene), sweep);
   }
   // a film of a panel that never moves is a still that takes longer to open
   for (const f of EX_VIDEO_FMTS) {
     const opt = document.querySelector(`#ex-format option[value="${f}"]`);
     if (!opt) continue;
-    opt.disabled = _exVideoAsked[f] === false || !exAnimatable(_exMode, _exScene);
+    opt.disabled = _exVideoAsked[f] === false
+      || !(exAnimatable(_exMode, _exScene) || exLapsable(f));
     if (opt.disabled && fmt === f) {
       document.getElementById('ex-format').value = 'png';
       return _exPaint();
@@ -222,8 +353,8 @@ function _exPanelRows(scene) {
 }
 
 function _exFrameCount(fmt, sweep) {
-  if (fmt === 'gif') return exGifCount(_exMode, sweep);
-  if (_exIsVideo(fmt)) return Math.max(2, Math.round(sweep * EX_VIDEO_FPS));
+  if (fmt === 'gif') return exGifCount(_exMode, sweep, _exScene);
+  if (_exIsVideo(fmt)) return Math.max(2, Math.round(sweep * exVideoFps(_exMode, _exScene)));
   return 0;
 }
 
@@ -449,6 +580,10 @@ async function exScene(mode, data) {
                    album: _exPlanFromDom('bp-album')};
   } else {
     Object.assign(scene, bpDashScene(data.dashboard || {}));
+    _exWindow = scene.index === null || scene.index === undefined ? null
+      : await fetch('/dashboard/window?event=' + scene.index)
+          .then(r => r.ok ? r.json() : null).catch(() => null);
+    if (_exWindow && !_exWindow.from) _exWindow = null;
     scene.date = bpLongDateText(new Date());
     scene.blink = (cfg.clock?.blink_interval ?? 1) * 2;
     scene.pixel = previewModeFor('dashboard') === 'pixel';
@@ -470,6 +605,8 @@ function exAnimatable(mode, scene) {
 }
 
 function exCycle(mode, scene) {
+  // a minute of the day per second, so the pass is as long as the run of minutes
+  if (mode === 'dashboard' && scene.lapse) return scene.lapse.mins;
   if (mode === 'dashboard') return exAnimatable(mode, scene) ? (scene.blink || 0) : 0;
   if (mode === 'clock') return scene.blink || 0;
   if (mode !== 'nowplaying') return 0;
@@ -541,8 +678,16 @@ function _exPlaceHead(scene) {
 }
 
 function _exAnimOn() {
+  const fmt = document.getElementById('ex-format').value;
+  if (_exMode === 'dashboard') return exDashMotion(fmt) && exAnimKind(fmt) !== 'still';
   return document.getElementById('ex-anim').checked
       && document.getElementById('ex-anim-row').style.display !== 'none';
+}
+
+function _exLapsePlan() {
+  return {from: _exLapse.from || _exWindow.from, to: _exLapse.to || _exWindow.to,
+          only: document.getElementById('ex-lapse-one').checked,
+          mins: _exLapseSpan()};
 }
 
 // ---- frames ---------------------------------------------------------------
@@ -556,11 +701,21 @@ const GIF_FRAME_BUDGET = 2100;
 const GIF_FPS_MIN = 4;
 const GIF_FPS_MAX = 20;
 
-function exStates(mode) { return EX_STATES[mode] || 0; }
+function exStates(mode, scene) {
+  // a run through the day is as many pictures as it has minutes
+  if (scene && scene.lapse) return scene.lapse.mins;
+  return EX_STATES[mode] || 0;
+}
 
-function exGifCount(mode, sweep) {
+// thirty a second is for a head sliding along a bar. a picture a minute needs one
+function exVideoFps(mode, scene) {
+  return scene && scene.lapse ? 1 : EX_VIDEO_FPS;
+}
+
+function exGifCount(mode, sweep, scene) {
   if (!sweep) return 1;
-  return exStates(mode) || Math.max(1, Math.round(sweep * exGifFps(mode, sweep)));
+  if (scene && scene.lapse) return scene.lapse.mins;
+  return exStates(mode, scene) || Math.max(1, Math.round(sweep * exGifFps(mode, sweep)));
 }
 
 function exGifFps(mode, sweep) {
@@ -581,7 +736,7 @@ const GIF_PALETTE_FRAMES = 8;
 // drawn and written frame by frame, holding a whole track as pixels would not fit
 async function exGif(mode, scene, width, onStep) {
   const sweep = scene.sweep || 0;
-  const count = exGifCount(mode, sweep);
+  const count = exGifCount(mode, sweep, scene);
   const cv = document.createElement('canvas');
   const layer = {};
   const probes = Math.min(GIF_PALETTE_FRAMES, count);
@@ -615,22 +770,23 @@ async function exEncode(mode, scene, width, onStep, want) {
   if (!pick) throw new Error('this browser cannot encode ' + want);
 
   const sweep = scene.sweep || exCycle(mode, scene) || 1;
-  const count = Math.max(2, Math.round(sweep * EX_VIDEO_FPS));
+  const fps = exVideoFps(mode, scene);
+  const count = Math.max(2, Math.round(sweep * fps));
   const lib = pick.ext === 'mp4' ? Mp4Muxer : WebMMuxer;
   const target = new lib.ArrayBufferTarget();
   const muxer = new lib.Muxer(pick.ext === 'mp4'
     ? {target, fastStart: 'in-memory',
        video: {codec: 'avc', width: cv.width, height: cv.height}}
     : {target,
-       video: {codec: pick.mux, width: cv.width, height: cv.height, frameRate: EX_VIDEO_FPS}});
+       video: {codec: pick.mux, width: cv.width, height: cv.height, frameRate: fps}});
   const encoder = new VideoEncoder({
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
     error: e => console.error('encoder failed:', e),
   });
   encoder.configure(pick.cfg);
 
-  const step = 1e6 / EX_VIDEO_FPS;
-  const states = exStates(mode);
+  const step = 1e6 / fps;
+  const states = exStates(mode, scene);
   let drawn = -1;
   try {
     for (let i = 0; i < count; i++) {
@@ -641,7 +797,7 @@ async function exEncode(mode, scene, width, onStep, want) {
       if (at !== drawn) { await exToCanvas(mode, scene, t, width, true, cv, layer); drawn = at; }
       const frame = new VideoFrame(cv, {timestamp: Math.round(i * step),
                                         duration: Math.round(step)});
-      encoder.encode(frame, {keyFrame: i % (2 * EX_VIDEO_FPS) === 0});
+      encoder.encode(frame, {keyFrame: i % Math.max(2, 2 * fps) === 0});
       frame.close();
       // the queue is the only backpressure there is, letting it run away eats the tab
       while (encoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r));
@@ -746,6 +902,42 @@ async function exToCanvas(mode, scene, t, width, animate, into, layer) {
   return cv;
 }
 
+// every minute of the run is a picture of the tile, so the tile has to be walked
+// through them. it is put out of sight while that happens
+async function _exBuildLapse(scene) {
+  const plan = scene.lapse;
+  const q = `from=${plan.from}&to=${plan.to}` + (plan.only ? `&event=${scene.index}` : '');
+  const layouts = await fetch('/dashboard/layouts?' + q)
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!layouts || !layouts.length) return null;
+  const tile = document.getElementById('home-blueprint');
+  const held = bpDashOverride();
+  // out of sight but not hidden: visibility inherits and the snapshot skips what is
+  // hidden, so hiding it that way would measure nothing at all
+  if (tile) tile.style.opacity = '0';
+  const frames = [];
+  const first = _exMinutes(plan.from);
+  try {
+    for (let i = 0; i < layouts.length; i++) {
+      exAbortCheck();
+      setBpDashOverride({layout: layouts[i], time: _exHhmm(first + i)});
+      bpRepaint();
+      await new Promise(requestAnimationFrame);
+      const snap = bpDashSnapshot();
+      for (const o of (snap ? snap.ops : []))
+        if (o.op === 'image' && !o.src.startsWith('data:'))
+          o.src = await bpWeatherPng(o.src) || o.src;
+      frames.push(snap);
+      if (_exStep) _exStep(i + 1, layouts.length, 'Walking the day');
+    }
+  } finally {
+    setBpDashOverride(held);
+    bpRepaint();
+    if (tile) tile.style.opacity = '';
+  }
+  return frames;
+}
+
 async function runExport() {
   const btn = document.getElementById('ex-go');
   const fmt = document.getElementById('ex-format').value;
@@ -758,9 +950,14 @@ async function runExport() {
     const scene = _exScene || await exScene(_exMode, await fetch('/home').then(r => r.json()));
     // one place decides whether anything moves, the head is placed when nothing does
     const anim = _exIsVideo(fmt) || (fmt !== 'png' && _exAnimOn());
+    scene.lapse = _exLapseOn(fmt) ? _exLapsePlan() : null;
     scene.sweep = anim ? exSweep(_exMode, scene) : 0;
     if (!scene.sweep) _exPlaceHead(scene);
     _exShowRun(fmt, width, scene);
+    if (scene.lapse && scene.sweep) {
+      scene.frames = await _exBuildLapse(scene);
+      if (!scene.frames) { scene.lapse = null; scene.sweep = 0; }
+    }
 
     if (fmt === 'svg') {
       let ops = rBuildOps(_exMode, _exFrameScene(_exMode, scene, 0, anim), 0, anim, true);

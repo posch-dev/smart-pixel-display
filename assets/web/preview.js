@@ -9,8 +9,8 @@ let cfg = {};
 let pv = {follow: 'live', theme: null, accent: null, panels: {},
           on: {raster: true, glow: true, album: true, trans: true, date: true,
                ddate: true, ddiv: true, dextra: true, dwhen: true, dblink: true,
-               donly: false},
-          dicon: null,
+               dacce: true, dacct: true},
+          dicon: null, dinfo: null, dpick: 'none', dhh: null, dmm: null,
           np: [{auto: true, hex: '#87a878'}, {auto: true, hex: '#87a878'}],
           col: {}};
 
@@ -18,6 +18,8 @@ let pv = {follow: 'live', theme: null, accent: null, panels: {},
 let _pvFrozen = false;
 let _pvActive = null;
 let _pvDashLayout = null;
+let _pvLast = null;
+let _pvSimError = false;
 
 // one sprite, kept in index.html, pulled in so the two never drift apart
 async function loadSprite() {
@@ -96,14 +98,15 @@ function pvBlankColors() {
 }
 
 // these three only open and close a group, so nothing is rebuilt and the fold can run
-const PV_FOLD_KEYS = ['donly', 'dextra', 'dblink'];
+const PV_FOLD_KEYS = ['dacce', 'dacct', 'dextra', 'dblink'];
 
 function setPvColOn(key, on) {
   pv.on[key] = on;
   applyPvColOn();
   if (PV_FOLD_KEYS.includes(key)) {
     _pvSyncFolds();
-    pollPreview();
+    if (key === 'dacce' || key === 'dacct') pvDashSim();
+    else pollPreview();
     return;
   }
   _pvKeepRow(key, () => { buildPvColors(); buildPvPanels(); });
@@ -121,7 +124,7 @@ function applyPvColOn() {
   set.dExtra = pv.on.dextra ? '' : 'off';
   set.dWhen = pv.on.dwhen ? '' : 'off';
   set.dBlink = pv.on.dblink ? '' : 'off';
-  set.dOnlyWeather = pv.on.donly ? 'on' : '';
+  set.dInfo = pv.dinfo || '';
   set.dIconLook = pv.dicon || '';
 }
 
@@ -285,13 +288,15 @@ function _pvFold(id, open, inner) {
 // runs shut instead of vanishing from under the switch
 function _pvDashOpts() {
   const sc = bpDashNow();
-  let html = _pvColorRow('ddate', 'Date', true)
+  let html = _pvSwitchRow('dacce', 'Accurate Event')
+           + _pvFold('pv-fold-pick', !pv.on.dacce, _pvPickRow())
+           + _pvSwitchRow('dacct', 'Accurate Time')
+           + _pvFold('pv-fold-time', !pv.on.dacct, _pvTimeRow())
+           + _pvColorRow('ddate', 'Date', true)
            + _pvColorRow('dclock', 'Clock') + _pvColorRow('dtemp', 'Current')
            + _pvColorRow('dhigh', 'High') + _pvColorRow('dlow', 'Low')
-           + _pvIconRow();
-  // with nothing on the calendar the weather is all there is, the switch would say nothing
+           + _pvIconRow() + _pvInfoRow();
   if (sc.rawMode === 1) return html;
-  html += _pvSwitchRow('donly', 'Only Weather');
   let ev = '<div class="card-title">Event</div>' + _pvColorRow('ddiv', 'Divider', true);
   if (sc.rawMode === 2) {
     ev += _pvColorRow('dwhen', 'Timespan', true);
@@ -308,7 +313,7 @@ function _pvDashOpts() {
         + _pvSwitchRow('dextra', 'Show Extra Information')
         + _pvFold('pv-fold-extra', pv.on.dextra, extra);
   }
-  return html + _pvFold('pv-fold-ev', !pv.on.donly, ev);
+  return html + ev;
 }
 
 // a fold only has to be told its new state, the drawer around it stays as it is
@@ -317,9 +322,125 @@ function _pvSyncFolds() {
     const el = document.getElementById(id);
     if (el) el.dataset.open = open ? '1' : '0';
   };
-  set('pv-fold-ev', !pv.on.donly);
+  set('pv-fold-pick', !pv.on.dacce);
+  set('pv-fold-time', !pv.on.dacct);
   set('pv-fold-extra', pv.on.dextra);
   set('pv-fold-blink', pv.on.dblink);
+}
+
+const PV_INFO = [['weather', 'Weather'], ['both', 'Both'], ['event', 'Event']];
+
+// with nothing on the calendar there is only weather to show, so the choice waits
+function _pvInfoRow() {
+  const live = bpDashNow().rawMode !== 1;
+  const own = live ? (pv.dinfo || 'both') : 'weather';
+  const btn = ([v, label]) =>
+    `<button onclick="setPvDashInfo('${v}')" class="${own === v ? 'on' : ''}"
+      ${live ? '' : 'disabled'}>${label}</button>`;
+  return `<div class="row" data-row="dinfo"><div class="row-left"><div class="row-label">Information</div></div>
+    <div class="row-right"><div class="seg">${PV_INFO.map(btn).join('')}</div></div></div>`;
+}
+
+function _pvEventLabel(ev, i) {
+  const d = new Date(ev.start_time);
+  const when = ev.is_all_day || ev.isAllDay || isNaN(d) ? 'All Day'
+    : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return [ev.title || `Event ${i + 1}`, when, ev.location].filter(Boolean).join(' | ');
+}
+
+function _pvPickRow() {
+  const list = (_pvLast && _pvLast.dashboard && _pvLast.dashboard.events) || [];
+  const opt = (v, label) =>
+    `<option value="${v}" ${String(pv.dpick) === String(v) ? 'selected' : ''}>${label}</option>`;
+  const opts = opt('none', 'No event (weather)')
+             + list.map((ev, i) => opt(i, _exEsc(_pvEventLabel(ev, i)))).join('');
+  return `<div class="row" data-row="dpick"><div class="row-left"><div class="row-label">Event</div>${_pvSimNote(true)}</div>
+    <div class="row-right"><select class="pv-sel" onchange="setPvDashPick(this.value)">${opts}</select></div></div>`;
+}
+
+// why the tile is not showing what was asked of it. the route is newer than the flask
+// process that is running until startup.py is restarted, and then nothing comes back
+function _pvSimNote(onPick) {
+  if (onPick === !pv.on.dacce) {
+    if (_pvSimError)
+      return '<div class="pv-note pv-skip">No answer from the panel, restart startup.py</div>';
+    if (bpDashNow().skipped)
+      return '<div class="pv-note pv-skip">Grace expired, the panel would move on</div>';
+  }
+  return '';
+}
+
+function _pvTimeRow() {
+  const now = new Date();
+  const hh = pv.dhh === null ? now.getHours() : pv.dhh;
+  const mm = pv.dmm === null ? now.getMinutes() : pv.dmm;
+  const sel = (n, val, fn) => {
+    let out = '';
+    for (let i = 0; i < n; i++)
+      out += `<option value="${i}" ${i === val ? 'selected' : ''}>${String(i).padStart(2, '0')}</option>`;
+    return `<select class="pv-sel pv-sel-n" onchange="${fn}(this.value)">${out}</select>`;
+  };
+  return `<div class="row" data-row="dtime"><div class="row-left"><div class="row-label">Time</div>${_pvSimNote(false)}</div>
+    <div class="row-right bright-row">${sel(24, hh, 'setPvDashHH')}<span class="pv-unit">h</span><span class="pv-colon">:</span>${sel(60, mm, 'setPvDashMM')}<span class="pv-unit">m</span></div></div>`;
+}
+
+function setPvDashInfo(which) {
+  pv.dinfo = which;
+  applyPvColOn();
+  pvRepaint();
+  _pvKeepRow('dinfo', buildPvPanels);
+}
+
+// what the rows are built from: the layout, whether the pick fell through, and how
+// many events there are to choose between
+function _pvDashSig() {
+  const sc = bpDashNow();
+  const n = ((_pvLast && _pvLast.dashboard && _pvLast.dashboard.events) || []).length;
+  return `${sc.rawMode}|${sc.late}|${sc.skipped}|${n}|${_pvSimError}`;
+}
+
+function _pvSyncDashRows() {
+  const sig = _pvDashSig();
+  if (sig === _pvDashLayout) return;
+  _pvDashLayout = sig;
+  _pvKeepRow('dpick', buildPvPanels);
+}
+
+function setPvDashPick(v) {
+  pv.dpick = v === 'none' ? 'none' : +v;
+  pvDashSim();
+}
+
+function setPvDashHH(v) { pv.dhh = +v; pvDashSim(); }
+function setPvDashMM(v) { pv.dmm = +v; pvDashSim(); }
+
+// the picked layout is worked out where the rules live, and only when it changes
+async function pvDashSim() {
+  if (pv.on.dacce && pv.on.dacct) {
+    setBpDashOverride(null);
+    pvRepaint();
+    _pvSyncDashRows();
+    return;
+  }
+  const now = new Date();
+  const hh = pv.dhh === null ? now.getHours() : pv.dhh;
+  const mm = pv.dmm === null ? now.getMinutes() : pv.dmm;
+  const q = [];
+  if (!pv.on.dacct) q.push(`at=${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+  if (!pv.on.dacce) q.push(`event=${pv.dpick}`);
+  const layout = await fetch('/dashboard/layout?' + q.join('&'))
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  _pvSimError = !layout;
+  if (layout) setBpDashOverride({layout, time: pv.on.dacct ? null : `${hh}:${mm}`});
+  pvRepaint();
+  _pvSyncDashRows();
+}
+
+// a paused tile is not polled, so the drawer paints it itself
+function pvRepaint() {
+  if (!_pvLast) return;
+  updateBlueprint(pv.follow === 'live' ? _pvLast
+                  : Object.assign({}, _pvLast, {active_mode: pv.follow}));
 }
 
 function setPvDashIcon(which) {
@@ -435,6 +556,7 @@ function paintPvFavicon() {
 function pollPreview() {
   if (exFrozen() || _pvFrozen) return;
   fetch('/home').then(r => r.json()).then(data => {
+    _pvLast = data;
     if (pv.follow !== 'live') data = Object.assign({}, data, {active_mode: pv.follow});
     updateBlueprint(data);
     if (data.active_mode !== _pvActive) {
@@ -442,11 +564,7 @@ function pollPreview() {
       if (pv.follow === 'live') buildPvPanels();
     }
     // the dashboard rows follow the layout the panel decided on
-    const layout = `${bpDashNow().rawMode}|${bpDashNow().late}`;
-    if (pvSubjectMode() === 'dashboard' && layout !== _pvDashLayout) {
-      _pvDashLayout = layout;
-      buildPvPanels();
-    }
+    if (pvSubjectMode() === 'dashboard') _pvSyncDashRows();
     paintPvHead();
     paintPvGlow();
   }).catch(() => {});

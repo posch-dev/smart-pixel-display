@@ -297,8 +297,8 @@ def _draw_calendar_overlay(img: Image.Image, now: datetime, ix: int, iy: int) ->
     _put(draw, dx, dy, day_s, f_day, C_RED)
 
 
-def _today_event_info(now: datetime):
-    # Returns (has_events, leave_in, leave_time_str, title, start_s, end_s). Mode 3 with travel, mode 2 without.
+def _today_event_info(now: datetime, events: list | None = None):
+    # Returns (has_events, leave_in, leave_time_str, title, start_s, end_s, index). Mode 3 with travel, mode 2 without.
     GRACE       = timedelta(minutes=20)
     WORTH_IT    = 28   # minutes remaining at arrival to be worth going
 
@@ -309,7 +309,7 @@ def _today_event_info(now: datetime):
             return None
 
     try:
-        events = calendar_store.get_events()
+        events = calendar_store.get_events() if events is None else events
         timed = []
         for ev in events:
             if ev.get("is_all_day") or ev.get("isAllDay", False):
@@ -320,7 +320,7 @@ def _today_event_info(now: datetime):
             except (ValueError, KeyError):
                 pass
         if not timed:
-            return False, None, None, None, None, None
+            return False, None, None, None, None, None, None
         timed.sort(key=lambda e: e["_start_dt"])
 
         for ev in timed:
@@ -345,29 +345,89 @@ def _today_event_info(now: datetime):
 
                 title   = ev.get("title", "")
                 leave_in = math.ceil((leave - now).total_seconds() / 60)
-                return True, leave_in, leave.strftime("%H:%M"), title, None, None
+                return True, leave_in, leave.strftime("%H:%M"), title, None, None, _index_of(ev)
 
             else:
                 # No travel time → Mode 2
                 title   = ev.get("title", "")
                 start_s = ev["_start_dt"].strftime("%H:%M")
                 end_s   = end.strftime("%H:%M") if end is not None else None
-                return True, None, None, title, start_s, end_s
+                return True, None, None, title, start_s, end_s, _index_of(ev)
 
-        return False, None, None, None, None, None
+        return False, None, None, None, None, None, None
 
     except Exception as e:
         print(f"[calendar] _today_event_info error: {e!r}")
-        return False, None, None, None, None, None
+        return False, None, None, None, None, None, None
 
 
-def layout_state(now: datetime | None = None) -> dict:
+def _index_of(event: dict):
+    stored = calendar_store.get_events()
+    for i, other in enumerate(stored):
+        if other is event:
+            return i
+    return None
+
+
+def _is_all_day(event: dict) -> bool:
+    return bool(event.get("is_all_day") or event.get("isAllDay"))
+
+
+def layout_state(now: datetime | None = None, pick=None) -> dict:
+    # pick is None for the panel's own choice, "none" for nothing, or an index
     now = now or datetime.now(LOCAL_TZ)
-    has_events, leave_in, leave_time_s, title, start_s, end_s = _today_event_info(now)
-    mode = 1 if not has_events else (3 if leave_in is not None else 2)
+    events = None
+    if pick == "none":
+        events = []
+    elif pick is not None:
+        stored = calendar_store.get_events()
+        events = [stored[pick]] if 0 <= pick < len(stored) else []
+        if events and _is_all_day(events[0]):
+            return {"mode": 2, "title": events[0].get("title", ""), "leave_in": None,
+                    "leave_time": None, "start": None, "end": None, "late": False,
+                    "all_day": True, "skipped": False, "index": pick}
+    has, leave_in, leave_time_s, title, start_s, end_s, index = _today_event_info(now, events)
+    mode = 1 if not has else (3 if leave_in is not None else 2)
+    if index is not None and isinstance(pick, int):
+        index = pick
     return {"mode": mode, "title": title, "leave_in": leave_in,
             "leave_time": leave_time_s, "start": start_s, "end": end_s,
-            "late": leave_in is not None and leave_in <= 0}
+            "late": leave_in is not None and leave_in <= 0, "all_day": False,
+            "skipped": bool(events) and not has, "index": index}
+
+
+# from where the panel would first put this event up to where it drops it again, plus
+# five minutes at each end so the change into it and out of it is in the picture
+def event_window(index) -> dict | None:
+    events = calendar_store.get_events()
+    if not isinstance(index, int) or not 0 <= index < len(events):
+        return None
+    ev = events[index]
+    try:
+        start = datetime.fromisoformat(ev["start_time"]).astimezone(LOCAL_TZ)
+    except (ValueError, KeyError):
+        return None
+    try:
+        end = datetime.fromisoformat(ev["end_time"]).astimezone(LOCAL_TZ)
+    except (ValueError, KeyError):
+        end = None
+    lead = timedelta(hours=float(config.get("dashboard", "hours_before_event", 2.0) or 0))
+    travel = ev.get("_travel_minutes")
+    if travel is not None and not _is_all_day(ev):
+        leave = start - timedelta(minutes=travel)
+        first, last = leave - lead, leave + timedelta(minutes=20)
+        if end is not None:
+            last = min(last, end - timedelta(minutes=travel + 28))
+    else:
+        first, last = start - lead, end or start
+    pad = timedelta(minutes=5)
+    first, last = first - pad, last + pad
+    if last < first:
+        last = first
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    first = max(first, day)
+    last = min(last, day + timedelta(hours=23, minutes=59))
+    return {"from": first.strftime("%H:%M"), "to": last.strftime("%H:%M")}
 
 
 def display_weather() -> dict | None:
@@ -495,7 +555,7 @@ def render_frame(now: datetime, w: dict | None, colon_on: bool,
             leave_in, leave_time_s, title = cal_override
             ev_start_s = ev_end_s = None
     else:
-        has_events, leave_in, leave_time_s, title, ev_start_s, ev_end_s = _today_event_info(now)
+        has_events, leave_in, leave_time_s, title, ev_start_s, ev_end_s, _ = _today_event_info(now)
     has_leave = leave_in is not None
 
     w_disp   = _to_display_weather(w) if w else None
