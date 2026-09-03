@@ -23,7 +23,7 @@ import assets.system.config as config
 MAC              = config.get("device", "mac_address")
 BRIGHTNESS       = config.get("device", "brightness", 50)
 BLINK_S          = config.get("clock", "blink_interval", 2.0)
-RECONNECT_S      = config.get("device", "reconnect_delay", 3.0)
+RECONNECT_S      = config.get("device", "reconnect_delay", 5.0)
 WEATHER_REFRESH  = 900   # seconds between background fetches (15 min)
 
 _WEATHER_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".weather_cache.json")

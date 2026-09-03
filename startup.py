@@ -37,7 +37,7 @@ import calendar_store
 from panels.now_playing.main import run_loop as np_run_loop
 
 MAC_ADDRESS     = config.get("device", "mac_address")
-RECONNECT_DELAY = config.get("device", "reconnect_delay")
+RECONNECT_DELAY = config.get("device", "reconnect_delay", 5)
 MAX_SLOTS       = 256
 BLE_SEND_TIMEOUT = 5
 _CLOCK_TICK     = 0.5

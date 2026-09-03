@@ -21,14 +21,14 @@ from pypixelcolor import AsyncClient
 from PIL import Image
 
 MAC      = config.get("device",     "mac_address")
-SLOT_A   = config.get("nowplaying", "slot_a")
-SLOT_B   = config.get("nowplaying", "slot_b")
-CHUNK_S  = config.get("nowplaying", "chunk_s")
+SLOT_A   = config.get("nowplaying", "slot_a", 1)
+SLOT_B   = config.get("nowplaying", "slot_b", 2)
+CHUNK_S  = config.get("nowplaying", "chunk_s", 20)
 PREP_S   = 8      # start preparing next chunk this many seconds before switch
-LAST_10  = 10     # if ≤ this many seconds remain, let current song finish
-MAX_REPS   = 2      # same (title, artist) more than this many times → ignored
+LAST_10  = 10     # if <= this many seconds remain, let current song finish
+MAX_REPS   = 2      # same (title, artist) more than this many times -> ignored
 COVER_WAIT = 7.0    # seconds to wait for cover before rendering with placeholder
-POLL_S     = config.get("nowplaying", "poll_s")
+IDLE_SLEEP = 1.0    # seconds to sleep when idle (nothing playing, waiting)
 
 def _black_hex() -> str:
     img = Image.new("RGB", (128, 32), (0, 0, 0))
@@ -186,7 +186,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 if nothing_since is None:
                     nothing_since = now
                 if now - nothing_since < NOTHING_DEBOUNCE:
-                    await asyncio.sleep(POLL_S)
+                    await asyncio.sleep(IDLE_SLEEP)
                     continue
                 if next_song is not None and not state["playing"] and (
                         standby_task is not None and standby_task.done()):
@@ -218,13 +218,13 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     cover_wait_since = None
                     if black_task is None or black_task.done():
                         black_task = asyncio.create_task(_black_keepalive(client, ble_lock))
-                    await asyncio.sleep(POLL_S)
+                    await asyncio.sleep(IDLE_SLEEP)
                     continue
 
                 else:
                     if black_task is None or black_task.done():
                         black_task = asyncio.create_task(_black_keepalive(client, ble_lock))
-                    await asyncio.sleep(POLL_S)
+                    await asyncio.sleep(IDLE_SLEEP)
                     continue
 
             if black_task and not black_task.done():
@@ -447,7 +447,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 font_n = new_font
                 display.set_font(font_n)
 
-            await asyncio.sleep(POLL_S)
+            await asyncio.sleep(IDLE_SLEEP)
 
     finally:
         await _cancel_task(black_task)

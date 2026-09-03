@@ -19,6 +19,7 @@ from genre_presets import get_preset
 from bpm_cache import get_track_data
 
 _POLL_LIMIT = {"lastfm": 0.25, "librefm": 1.0}  # minimum seconds between scrobbler polls
+_POLL_DEFAULT = {"lastfm": 0.5, "librefm": 2.0}  # default poll interval per scrobbler
 
 def _ts() -> str:
     return datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -270,8 +271,10 @@ def _poll_loop() -> None:
         except Exception as e:
             print(f"{_ts()} [poller error] {e}")
 
-        min_sleep = _POLL_LIMIT.get(_current_scrobbler or "lastfm", 1.0)
-        sleep_s   = max(min_sleep, config.get("nowplaying", "poll_s") or 1.0)
+        configured = config.get("nowplaying", "poll_s")
+        limit = _POLL_LIMIT.get(_current_scrobbler or "lastfm", 1.0)
+        default = _POLL_DEFAULT.get(_current_scrobbler or "lastfm", 1.0)
+        sleep_s = max(configured, limit) if configured else default
         time.sleep(sleep_s)
 
 

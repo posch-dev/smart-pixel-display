@@ -18,7 +18,7 @@ DISPLAY_H = 32
 
 MAC_ADDRESS     = config.get("device", "mac_address")
 BRIGHTNESS      = config.get("clock",  "brightness")
-RECONNECT_DELAY = config.get("device", "reconnect_delay")
+RECONNECT_DELAY = config.get("device", "reconnect_delay", 5)
 _CLOCK_TICK     = 0.5
 
 FONT_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts", "SevenSegment.ttf")
