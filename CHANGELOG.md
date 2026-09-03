@@ -37,6 +37,7 @@ The one where the web UI grew up.
 ### Fixed
 
 - Brightness on a panel switch: Switching panels could leave the display sitting at the old panel's brightness. The switch cancelled whatever was still being sent, and the brightness command went down with it, so the new panel drew at the wrong level until something else set it.
+- Environment file: The bpm cache looked for a `.env` beside its own module, where there never was one, so the getsongbpm key went unread and the bpm readout stayed empty. It takes the one in the repo root.
 
 ### Removed
 
