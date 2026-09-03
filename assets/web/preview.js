@@ -57,8 +57,9 @@ function togglePvFreeze() {
   setBlueprintFrozen(_pvFrozen);
   document.getElementById('pv-freeze-use')
     .setAttribute('href', _pvFrozen ? '#ico-play' : '#ico-pause');
-  document.getElementById('pv-freeze-label').textContent = _pvFrozen ? 'Resume' : 'Pause';
-  document.getElementById('pv-freeze').classList.toggle('on', _pvFrozen);
+  const btn = document.getElementById('pv-freeze');
+  btn.title = _pvFrozen ? 'Resume Preview' : 'Pause Preview';
+  btn.classList.toggle('on', _pvFrozen);
   document.getElementById('pv-follow').disabled = _pvFrozen;
   if (!_pvFrozen) pollPreview();
 }
@@ -279,14 +280,18 @@ function paintPvHead() {
 }
 
 function togglePvMenu() {
-  document.getElementById('pv-menu').classList.toggle('show');
+  document.body.classList.toggle('menu-open');
 }
 
 document.addEventListener('pointerdown', e => {
+  const body = document.body;
+  if (!body.classList.contains('menu-open')) return;
   const menu = document.getElementById('pv-menu');
-  if (!menu.classList.contains('show')) return;
-  if (menu.contains(e.target) || document.getElementById('pv-burger').contains(e.target)) return;
-  menu.classList.remove('show');
+  // the export sits on top of the drawer, a click in it is not a click beside it
+  if (menu.contains(e.target) || e.target.closest('.modal-overlay')) return;
+  // the two floating buttons live outside the drawer but belong to it
+  if (e.target.closest('#pv-burger, #pv-freeze')) return;
+  body.classList.remove('menu-open');
 });
 
 // the page has no link of its own, so its tab carries the accent instead
@@ -314,7 +319,11 @@ function pollPreview() {
   }).catch(() => {});
 }
 
+// there is room for it on a desktop, so it starts open there and closed on a phone
+const PV_WIDE_PX = 900;
+
 async function initPreview() {
+  if (window.innerWidth > PV_WIDE_PX) document.body.classList.add('menu-open');
   await loadSprite();
   setPvTheme(pv.theme || getCookie('spd_theme') || 'dark');
   setPvAccent(pv.accent || getCookie('spd_accent') || '#87a878');

@@ -12,28 +12,28 @@
 <div id="pv-sprite" hidden></div>
 
 <button id="pv-burger" onclick="togglePvMenu()" title="Settings">
-  <svg class="ico"><use href="#ico-menu"/></svg>
+  <svg class="ico"><use href="#ico-chevron-down"/></svg>
+</button>
+
+<button id="pv-freeze" onclick="togglePvFreeze()" title="Pause Preview">
+  <svg class="ico"><use id="pv-freeze-use" href="#ico-pause"/></svg>
 </button>
 
 <div id="pv-menu">
-  <button id="pv-freeze" class="pv-freeze" onclick="togglePvFreeze()">
-    <svg class="ico"><use id="pv-freeze-use" href="#ico-pause"/></svg>
-    <span id="pv-freeze-label">Pause</span>
+  <button id="pv-export" class="pv-act" onclick="openExport()">
+    <svg class="ico"><use href="#ico-download"/></svg>
+    <span>Export</span>
   </button>
   <div class="card-title">Preview<span class="pv-note">This page only</span></div>
   <div class="row">
     <div class="row-left"><div class="row-label">Show</div></div>
     <div class="row-right"><select id="pv-follow" onchange="setPvFollow(this.value)">
-      <option value="live">Follow the display</option>
+      <option value="live">Live Display</option>
       <option value="clock">Clock</option>
       <option value="verse_of_day">Verse</option>
       <option value="nowplaying">NowPlaying</option>
       <option value="dashboard">Dashboard</option>
     </select></div>
-  </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Export</div></div>
-    <div class="row-right"><button class="btn btn-ghost btn-sm pv-export" onclick="openExport()" title="Export"><svg class="ico" style="width:14px;height:14px"><use href="#ico-download"/></svg></button></div>
   </div>
   <div class="card-title">Appearance</div>
   <div class="row">

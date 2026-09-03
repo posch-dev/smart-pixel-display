@@ -11,6 +11,7 @@
   font-display: block;
 }
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg:      #0e0e0e;
   --surface: #161616;
   --card:    #1e1e1e;
@@ -23,6 +24,7 @@
   --shade: 0,0,0;
 }
 [data-theme="light"] {
+  color-scheme: light;
   --bg:      #dcdcdc;
   --surface: #f4f4f4;
   --card:    #ffffff;
@@ -38,6 +40,12 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* a scrollbar in the system colours is a bright seam down a dark page */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 body {
   background: var(--bg); color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -131,8 +139,12 @@ header {
 #mode-btn.manual .ico-bot { color: var(--manual-col); }
 #mode-btn.manual { border-color: var(--manual-col); }
 /* one pair of colours for the whole ui: scheduler against user override */
-:root { --auto-col: var(--accent); --manual-col: var(--accent-c); --pulse-s: 3.4s; --zoom: 1; }
-[data-preview="pixel"] { --auto-col: #00a2ff; --manual-col: #ff9c00; }
+:root {
+  --auto-col: var(--accent); --manual-col: var(--accent-c);
+  --portal-blue: #00a2ff; --portal-orange: #ff9c00;
+  --pulse-s: 3.4s; --zoom: 1; --pv-side: 340px;
+}
+[data-preview="pixel"] { --auto-col: var(--portal-blue); --manual-col: var(--portal-orange); }
 
 /* a tenth bigger on desktop, the way a browser at 110 percent draws it. viewport
    units do not shrink with zoom, so every one of them is divided back out. */
@@ -253,8 +265,11 @@ header {
   background: none; border: none; padding: 0; cursor: pointer; color: var(--accent);
   display: flex; align-items: center; flex-shrink: 0;
 }
-.pv-undo .ico { width: 15px; height: 15px; }
-.pv-undo:disabled { color: var(--muted); opacity: .4; cursor: default; }
+/* the way back reads against the page, not with it */
+[data-theme="dark"] .pv-undo { color: var(--portal-orange); }
+[data-theme="light"] .pv-undo { color: var(--portal-blue); }
+.pv-undo .ico { width: 18px; height: 18px; }
+.pv-undo:disabled { color: var(--muted); opacity: .6; cursor: default; }
 .bright-div { width: 1px; height: 18px; background: var(--border); flex-shrink: 0; transition: opacity .2s; }
 .bright-label { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 40px; text-align: right; }
 input[type=range] {
@@ -471,31 +486,72 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 #bp-full-slot { width: 90%; }
 
 /* the preview on a page of its own */
-.pv-body { min-height: calc(100dvh / var(--zoom)); display: flex; align-items: center; justify-content: center; }
-.pv-stage { width: 90%; }
-#pv-burger {
-  position: fixed; top: 14px; right: 14px; z-index: 2;
+/* the settings are a drawer the stage makes room for, not a sheet laid over it. the
+   drawer keeps its width and hangs off the line until it is asked in. */
+.pv-body {
+  min-height: calc(100dvh / var(--zoom)); display: flex; align-items: stretch;
+  overflow-x: hidden;
+}
+.pv-stage {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
+}
+.pv-stage > .blueprint { width: 90%; }
+/* the two float over the stage and ride along with the drawer edge */
+/* the page is drawn under the notch, so the two keep clear of it themselves */
+#pv-burger, #pv-freeze {
+  position: fixed; right: calc(14px + env(safe-area-inset-right));
+  z-index: 4; transition: right .25s ease;
   width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
   background: var(--card); border: 1px solid var(--border); border-radius: 8px;
   color: var(--muted); cursor: pointer;
 }
-#pv-burger:hover { color: var(--text); border-color: var(--accent); }
-.pv-freeze {
+#pv-burger { top: calc(14px + env(safe-area-inset-top)); }
+#pv-freeze { top: calc(56px + env(safe-area-inset-top)); }
+#pv-burger:hover, #pv-freeze:hover { color: var(--text); border-color: var(--accent); }
+#pv-freeze.on { color: var(--accent); border-color: var(--accent); }
+#pv-burger .ico, #pv-freeze .ico { width: 15px; height: 15px; }
+/* the chevron points at where the drawer will go: in from the right, out again */
+#pv-burger .ico { transform: rotate(90deg); transition: transform .25s ease; }
+.pv-body.menu-open #pv-burger .ico { transform: rotate(-90deg); }
+/* the export sits at the top of the drawer, one line, full width */
+.pv-act {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; padding: 11px 16px; border: none; border-bottom: 1px solid var(--border);
   background: none; color: var(--text); font-size: 12px; font-weight: 600;
-  cursor: pointer; border-radius: 10px 10px 0 0;
+  cursor: pointer;
 }
-.pv-freeze:hover { background: var(--input); }
-.pv-freeze.on { color: var(--accent); }
-.pv-freeze .ico { width: 15px; height: 15px; }
+.pv-act:hover { background: var(--input); }
+/* the same green the power button wears while the display is on. the green fills the
+   button and the drawer colour comes back in from the edges, so it reads as lit rather
+   than as outlined. */
+#pv-export {
+  color: var(--green); padding: 18px 16px;
+  border-bottom-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  box-shadow: inset 0 0 16px -3px var(--card);
+}
+#pv-export:hover { background: color-mix(in srgb, var(--green) 22%, transparent); }
+/* the light card is white, so the same mix comes out nearly white and the glow from the
+   card washes what is left. the fill goes up and the glow pulls back. */
+[data-theme="light"] #pv-export {
+  background: color-mix(in srgb, var(--green) 26%, transparent);
+  box-shadow: inset 0 0 16px -7px var(--card);
+}
+[data-theme="light"] #pv-export:hover { background: color-mix(in srgb, var(--green) 36%, transparent); }
+.pv-act .ico { width: 15px; height: 15px; }
 
 #pv-menu {
-  display: none; position: fixed; top: 56px; right: 14px; z-index: 2; width: 320px; max-width: calc(100vw / var(--zoom) - 28px);
-  background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-  max-height: calc(100dvh / var(--zoom) - 76px); overflow-y: auto;
+  /* it stands before the stage in the markup, the drawer belongs behind it */
+  order: 1;
+  flex: 0 0 auto; width: var(--pv-side); max-width: calc(100vw / var(--zoom));
+  margin-right: calc(-1 * var(--pv-side)); transition: margin-right .25s ease;
+  background: var(--card); border-left: 1px solid var(--border); z-index: 3;
+  height: calc(100dvh / var(--zoom)); position: sticky; top: 0; overflow-y: auto;
 }
-#pv-menu.show { display: block; }
+.pv-body.menu-open #pv-menu { margin-right: 0; }
+.pv-body.menu-open #pv-burger, .pv-body.menu-open #pv-freeze {
+  right: calc(14px + env(safe-area-inset-right) + var(--pv-side));
+}
 #pv-menu .row:last-child { border-bottom: none; }
 .modal-title .ico { flex-shrink: 0; color: var(--text); }
 .ex-head { min-width: 0; }
@@ -505,8 +561,6 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   font-size: 12px; margin-top: 2px; overflow: hidden; white-space: pre-wrap;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
-.pv-export { border-color: var(--accent); color: var(--accent); padding: 6px 14px; }
-.pv-export:hover { background: var(--accent-d); }
 .ex-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .pv-note { font-size: 9px; font-weight: 400; letter-spacing: 0; text-transform: none;
   color: var(--muted); text-align: right; max-width: 60%; }
@@ -691,4 +745,36 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   .pgrid-count { font-size: 12px; }
 
   .color-hex { min-width: 0; }
+}
+
+/* the drawer wants more room than the rest of the page does, so it folds up sooner */
+@media (max-width: 900px) {
+  /* the page itself does not scroll, the drawer owns the only scrollbar. the stage
+     takes whatever is left over and holds the tile in the middle of it, so the tile
+     never leaves the screen and never sits against the drawer. */
+  .pv-body {
+    flex-direction: column; justify-content: flex-start;
+    height: calc(100dvh / var(--zoom)); overflow: hidden;
+  }
+  /* closed, the tile sits in the middle of the screen. open, the stage asks for the
+     tile and a twentieth of the screen above and below it, and the drawer takes every
+     pixel that is left over. */
+  .pv-stage { flex: 1; min-height: 0; }
+  .pv-body.menu-open .pv-stage { flex: 0 0 auto; padding: 5dvh 0; }
+  #pv-menu {
+    order: -1; width: 100%; max-width: none; margin-right: 0; height: auto;
+    max-height: 0; overflow: hidden; position: static;
+    padding-top: calc(44px + env(safe-area-inset-top));
+    border-left: none; border-bottom: 1px solid var(--border);
+    transition: max-height .25s ease;
+  }
+  .pv-body.menu-open #pv-menu {
+    flex: 1 1 auto; min-height: 0; max-height: 100dvh; overflow-y: auto;
+  }
+  #pv-freeze { top: calc(14px + env(safe-area-inset-top));
+               right: calc(56px + env(safe-area-inset-right)); }
+  #pv-burger .ico { transform: none; }
+  .pv-body.menu-open #pv-burger .ico { transform: rotate(180deg); }
+  .pv-body.menu-open #pv-burger { right: calc(14px + env(safe-area-inset-right)); }
+  .pv-body.menu-open #pv-freeze { right: calc(56px + env(safe-area-inset-right)); }
 }
