@@ -98,6 +98,7 @@ document.addEventListener('pointerdown', e => {
 });
 
 function pollPreview() {
+  if (exFrozen()) return;
   fetch('/home').then(r => r.json()).then(data => {
     if (pv.follow !== 'live') data = Object.assign({}, data, {active_mode: pv.follow});
     updateBlueprint(data);

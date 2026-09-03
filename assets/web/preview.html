@@ -37,6 +37,10 @@
     <div class="row-left"><div class="row-label">Accent</div></div>
     <div class="row-right"><input type="color" id="pv-accent" oninput="setPvAccent(this.value)"></div>
   </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Export</div></div>
+    <div class="row-right"><button class="btn btn-ghost btn-sm pv-export" onclick="openExport()" title="Export"><svg class="ico" style="width:14px;height:14px"><use href="#ico-download"/></svg></button></div>
+  </div>
   <div class="card-title">Appearance</div>
   <div id="pv-panels"></div>
 </div>
@@ -49,6 +53,9 @@
 </div>
 
 <script src="blueprint.js"></script>
+<script src="render.js"></script>
+<script src="gif.js"></script>
+<script src="export.js"></script>
 <script src="preview.js"></script>
 </body>
 </html>

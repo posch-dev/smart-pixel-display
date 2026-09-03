@@ -111,7 +111,10 @@ def web_font(filename):
 
 @app.get("/<path:filename>")
 def web_static(filename):
-    return send_from_directory(_web, filename)
+    resp = make_response(send_from_directory(_web, filename))
+    # the ui files change under the browser all the time, a stale script is a fake bug
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.get("/status")

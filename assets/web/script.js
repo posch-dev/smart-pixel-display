@@ -554,6 +554,7 @@ function closeBlueprintFull() {
 }
 
 function pollHome() {
+  if (exFrozen()) return;
   if (document.getElementById('tab-home')?.classList.contains('active') && !document.hidden) {
     fetch('/home').then(r => r.json()).then(data => {
       updateBlueprint(data);
