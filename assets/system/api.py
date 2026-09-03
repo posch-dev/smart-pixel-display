@@ -3,7 +3,6 @@ import sys
 import time
 import asyncio
 import logging
-import hashlib
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory, make_response
 
@@ -262,13 +261,10 @@ def home():
     if verse_data:
         verse = {
             "reference": verse_data["reference"],
-            "text": verse_data["text"],
             "translation": verse_data["translation"],
         }
 
     np_state = rt.np_poller.get_state()
-    cover = np_state.get("cover_web") or np_state.get("cover")
-    cover_etag = hashlib.md5(cover).hexdigest()[:12] if cover else None
     # the three colours the panel derives from the cover, so the web ui can match it
     np_main = sys.modules.get("panels.now_playing.main")
     accents = getattr(getattr(np_main, "display", None), "last_accents", None)
@@ -281,7 +277,7 @@ def home():
         "album": np_state.get("album"),
         "duration_s": np_state.get("duration_s"),
         "elapsed_s": round(np_state.get("elapsed_s", 0)),
-        "cover_etag": cover_etag,
+        "cover_url": np_state.get("cover_url"),
     }
 
     weather = rt.md_display._weather
@@ -305,24 +301,6 @@ def home():
         "nowplaying": nowplaying,
         "dashboard": dashboard,
     }), 200
-
-
-@app.get("/nowplaying/cover")
-def nowplaying_cover():
-    state = _rt().np_poller.get_state()
-    cover = state.get("cover_web") or state.get("cover")
-    if not cover:
-        return "", 404
-
-    etag = hashlib.md5(cover).hexdigest()[:12]
-    if request.headers.get("If-None-Match") == etag:
-        return "", 304
-
-    resp = make_response(cover)
-    resp.headers["Content-Type"] = "image/jpeg"
-    resp.headers["ETag"] = etag
-    resp.headers["Cache-Control"] = "no-cache"
-    return resp
 
 
 def run(host: str = "0.0.0.0", port: int = 5000) -> None:

@@ -94,10 +94,11 @@ function _exBuildDialog() {
       <div class="row-right"><label class="toggle"><input type="checkbox" id="ex-anim" onchange="setExAnim()">
         <div class="t-track"></div><div class="t-thumb"></div></label></div>
     </div>
-    ${document.getElementById('tab-home') ? `<div class="row">
-      <div class="row-left"><div class="row-sub">More customization available on the
-        <a href="/preview" target="_blank" rel="noopener" class="ex-link">preview site</a></div></div>
-    </div>` : ''}
+    ${document.getElementById('tab-home') ? `<a href="/preview" target="_blank"
+      rel="noopener" class="row ex-more">
+      <span>More customization in the <b>Twin</b> Viewer &amp; Editor</span>
+      <svg class="ico"><use href="#ico-external"/></svg>
+    </a>` : ''}
     </div>
     <div id="ex-run" style="display:none">
       <div class="ex-sum" id="ex-sum"></div>
@@ -376,9 +377,10 @@ function _exWrap(str, size, maxW, maxLines) {
   return lines.slice(0, maxLines);
 }
 
-async function _exCoverDataUri(etag) {
-  if (!etag) return null;
-  const blob = await fetch('/nowplaying/cover?e=' + etag).then(r => r.ok ? r.blob() : null);
+async function _exCoverDataUri(url) {
+  const src = bpCoverUrl(url);
+  if (!src) return null;
+  const blob = await fetch(src).then(r => r.ok ? r.blob() : null).catch(() => null);
   if (!blob) return null;
   return await new Promise(res => {
     const fr = new FileReader();
@@ -397,7 +399,7 @@ function _exPlanFromDom(id) {
   const k = R_W / bp.clientWidth;
   const boxW = el.clientWidth * k, textW = span.offsetWidth * k;
   const over = el.classList.contains('on') ? textW - boxW : 0;
-  return {over: Math.max(0, over), dur: over > 0 ? 7 + over / 12 : 0, textW, boxW};
+  return {over: Math.max(0, over), textW, boxW};
 }
 
 async function exScene(mode, data) {
@@ -416,7 +418,8 @@ async function exScene(mode, data) {
     const v = data.verse || {};
     scene.ref = _verseReference(v.reference);
     const noTrans = document.documentElement.dataset.trans === 'off';
-    scene.lines = _exWrap(v.text, 2.5 * CQ * (noTrans ? VS_NO_TRANS_SCALE : 1),
+    scene.lines = _exWrap(v.reference ? bpPassage(v.reference, v.translation) : '',
+                          2.5 * CQ * (noTrans ? VS_NO_TRANS_SCALE : 1),
                           88 * CQ, noTrans ? 4 : 3);
     scene.translation = v.translation
       ? '(' + (BP_TRANSLATIONS[v.translation] || v.translation.split(':').pop().toUpperCase()) + ')'
@@ -430,7 +433,7 @@ async function exScene(mode, data) {
     scene.elapsed = np.playing ? (np.elapsed_s || 0) : 0;
     scene.elapsedText = fmtClock(scene.elapsed);
     scene.totalText = fmtClock(scene.duration);
-    scene.cover = await _exCoverDataUri(np.cover_etag);
+    scene.cover = await _exCoverDataUri(np.cover_url);
     scene.plans = {title: _exPlanFromDom('bp-track'), artist: _exPlanFromDom('bp-artist'),
                    album: _exPlanFromDom('bp-album')};
   } else {
@@ -455,7 +458,7 @@ function exCycle(mode, scene) {
   if (mode === 'clock') return scene.blink || 0;
   if (mode !== 'nowplaying') return 0;
   const p = scene.plans || {};
-  return Math.max(p.title?.dur || 0, p.artist?.dur || 0, p.album?.dur || 0, EX_NP_SWEEP_S);
+  return Math.max(rScrollCycle([p.title, p.artist, p.album]), EX_NP_SWEEP_S);
 }
 
 // what an animated file covers: the pass that carries the scrolling, or the song if

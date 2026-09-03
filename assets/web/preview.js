@@ -190,10 +190,9 @@ function applyPvPanels() {
   }
 }
 
-// following the display shows every switch and the settings of whatever is on screen,
-// a fixed pick shows that one panel and nothing else
+// live means live: the panel on the display and nothing beside it
 function pvShownModes() {
-  return pv.follow === 'live' ? PV_MODES : [pv.follow];
+  return [pvSubjectMode()];
 }
 
 function pvSubjectMode() {

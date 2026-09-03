@@ -160,11 +160,14 @@ function icon(href, x, y, w, h, fill) {
 
 function rScrollPlan(textW, boxW) {
   const over = textW - boxW;
-  if (over <= 1) return {over: 0, dur: 0};
-  return {over, dur: 7 + over / 12};
+  return {over: over > 1 ? over : 0, textW, boxW};
 }
 
-function _ease(u) { return u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u); }
+function rScrollSpeed() { return BP_SCROLL_PX_S * R_W / BP_SCROLL_REF_W; }
+
+function rScrollCycle(plans) {
+  return bpScrollCycle(plans.map(p => (p && p.over) || 0), rScrollSpeed());
+}
 
 // the artist takes what its name needs and no more than three fifths of the row, the
 // album gets the rest and only travels when that is not enough
@@ -179,14 +182,12 @@ function rNpRowSplit(mw, artNat, size, full) {
   return {gap, artW, albW: full ? 0 : Math.max(0, mw - artW - gap)};
 }
 
-// keyframes 0 and 14 percent at rest, 50 and 64 percent at the far end
-function rScrollAt(plan, t) {
-  if (!plan.over) return 0;
-  const u = (t % plan.dur) / plan.dur;
-  if (u < 0.14) return 0;
-  if (u < 0.50) return -plan.over * _ease((u - 0.14) / 0.36);
-  if (u < 0.64) return -plan.over;
-  return -plan.over * (1 - _ease((u - 0.64) / 0.36));
+// still, then out at the group speed, then still again until the cycle turns over
+function rScrollAt(plan, t, cycle) {
+  if (!plan.over || !cycle) return 0;
+  const u = t % cycle;
+  if (u <= BP_SCROLL_HOLD_S) return 0;
+  return -Math.min((u - BP_SCROLL_HOLD_S) * rScrollSpeed(), plan.over);
 }
 
 // ---- panels ---------------------------------------------------------------
@@ -283,8 +284,11 @@ function _rVerse(scene, t, pal) {
 // a counter cannot tween, so it is written out and switched
 const R_SWEEP_STEPS = 240;
 
-function _rScrollAnim(plan, animate) {
-  return animate && plan.over ? {type: 'scroll', over: plan.over, dur: plan.dur} : null;
+function _rScrollAnim(plan, cycle, animate) {
+  if (!animate || !plan.over || !cycle) return null;
+  const p1 = BP_SCROLL_HOLD_S / cycle;
+  return {type: 'scroll', over: plan.over, dur: cycle, p1,
+          p2: p1 + plan.over / rScrollSpeed() / cycle};
 }
 
 function _rNowPlaying(scene, t, pal, animate, decl) {
@@ -320,11 +324,6 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   const plans = scene.plans || {};
   const decling = animate && decl;
   const tPlan = plans.title || rScrollPlan(rTextWidth(scene.title, trackSize, 700), mw);
-  ops.push(clip(mx, y, mw, trackLine, rScrollAt(tPlan, t),
-    [text(0, rBase(0, trackLine, trackSize, 700), scene.title, trackSize, pal.title,
-          {weight: 700, width: tPlan.textW})],
-    _rScrollAnim(tPlan, decling)));
-  y += trackLine;
 
   const noAlbum = document.documentElement.dataset.album === 'off';
   const artNat = plans.artist?.textW ?? rTextWidth(scene.artist, artSize);
@@ -333,15 +332,24 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   const albW = noAlbum ? 0 : (plans.album?.boxW ?? Math.max(0, mw - artW - split.gap));
   const aPlan = plans.artist || rScrollPlan(rTextWidth(scene.artist, artSize), artW);
   const lPlan = plans.album || rScrollPlan(rTextWidth(scene.album, albSize), albW);
+  // the three lines share one cycle, so they leave and come back together
+  const cycle = rScrollCycle([tPlan, aPlan, noAlbum ? null : lPlan]);
+
+  ops.push(clip(mx, y, mw, trackLine, rScrollAt(tPlan, t, cycle),
+    [text(0, rBase(0, trackLine, trackSize, 700), scene.title, trackSize, pal.title,
+          {weight: 700, width: tPlan.textW})],
+    _rScrollAnim(tPlan, cycle, decling)));
+  y += trackLine;
+
   // both sit on the artist baseline, the row aligns on it
   const rowBase = rBase(0, rowH, artSize);
-  ops.push(clip(mx, y, artW, rowH, rScrollAt(aPlan, t),
+  ops.push(clip(mx, y, artW, rowH, rScrollAt(aPlan, t, cycle),
     [text(0, rowBase, scene.artist, artSize, pal.artist, {width: aPlan.textW})],
-    _rScrollAnim(aPlan, decling)));
+    _rScrollAnim(aPlan, cycle, decling)));
   if (!noAlbum)
-    ops.push(clip(mx + mw - albW, y, albW, rowH, rScrollAt(lPlan, t),
+    ops.push(clip(mx + mw - albW, y, albW, rowH, rScrollAt(lPlan, t, cycle),
       [text(0, rowBase, scene.album, albSize, pal.album, {width: lPlan.textW})],
-      _rScrollAnim(lPlan, decling)));
+      _rScrollAnim(lPlan, cycle, decling)));
   y += rowH + barTop;
 
   const sweep = animate && decl && scene.sweep;
@@ -505,10 +513,10 @@ function _opToSvg(o, defs) {
     const inner = o.children.map(c => _opToSvg(c, defs)).join('');
     if (o.anim && o.anim.type === 'scroll') {
       const over = o.anim.over;
-      // the same shape the css keyframes have: rest, travel, rest, travel back
+      // the same shape the css timing function has, the loop does the jump back
       const move = `<animateTransform attributeName="transform" type="translate" additive="sum"`
-        + ` values="0 0;0 0;${-over} 0;${-over} 0;0 0" keyTimes="0;0.14;0.5;0.64;1"`
-        + ` calcMode="spline" keySplines="0 0 1 1;.42 0 .58 1;0 0 1 1;.42 0 .58 1"`
+        + ` values="0 0;0 0;${-over} 0;${-over} 0"`
+        + ` keyTimes="0;${o.anim.p1.toFixed(4)};${o.anim.p2.toFixed(4)};1" calcMode="linear"`
         + ` dur="${o.anim.dur.toFixed(2)}s" repeatCount="indefinite"/>`;
       return `<g clip-path="url(#${id})"><g transform="translate(${o.x} ${o.y})">`
            + `${inner}${move}</g></g>`;

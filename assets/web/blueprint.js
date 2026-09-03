@@ -232,10 +232,54 @@ function _ordinalSuffix(n) {
 function _bpVerse(v, colors) {
   _tint('bp-verse', '--vs', colors && colors.verse_of_day);
   _bpText('bp-ref', _verseReference(v && v.reference));
-  _bpText('bp-text', (v && v.text) || '');
+  _bpText('bp-text', v && v.reference ? bpPassage(v.reference, v.translation) : '');
   const t = v && v.translation;
   _bpText('bp-trans', t ? '(' + (BP_TRANSLATIONS[t] || t.split(':').pop().toUpperCase()) + ')' : '');
 }
+
+// the panel needs the reference only, so the passage never travels through the pi
+const _bpPassages = {};
+let _bpBooks = null;
+
+function bpPassage(reference, translation) {
+  const key = reference + '|' + translation;
+  if (key in _bpPassages) return _bpPassages[key];
+  _bpPassages[key] = '';
+  _bpFetchPassage(translation, reference)
+    .then(text => { _bpPassages[key] = text; _bpText('bp-text', text); })
+    .catch(() => {});
+  return '';
+}
+
+async function _bpFetchPassage(translation, reference) {
+  const [backend, id] = String(translation || '').split(':');
+  if (backend === 'bibleapi') {
+    const r = await fetch(`https://bible-api.com/${encodeURIComponent(reference)}`
+                        + `?translation=${encodeURIComponent(id)}`);
+    return ((await r.json()).text || '').trim();
+  }
+  if (backend !== 'bolls') return '';
+  const m = /^(.+?)\s+(\d+)\s*:\s*(\d+)(?:\s*[-\u2013]\s*(\d+))?/.exec(reference || '');
+  const book = m && await _bpBollsBook(id, m[1]);
+  if (!book) return '';
+  const parts = [];
+  for (let v = +m[3]; v <= (+m[4] || +m[3]); v++) {
+    const r = await fetch(`https://bolls.life/get-verse/${id}/${book}/${m[2]}/${v}/`);
+    parts.push(((await r.json()).text || '').trim());
+  }
+  return parts.join(' ');
+}
+
+// the book list answers with names, so nothing here carries a table of sixty six
+async function _bpBollsBook(id, name) {
+  if (!_bpBooks) _bpBooks = fetch(`https://bolls.life/get-books/${id}/`).then(r => r.json());
+  const want = _bpBookKey(name);
+  const books = await _bpBooks;
+  const hit = books.find(b => [want, want + 'S'].includes(_bpBookKey(b.name)));
+  return hit ? hit.bookid : null;
+}
+
+function _bpBookKey(s) { return String(s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 
 function _verseReference(ref) {
   if (!ref) return '\u2014';
@@ -252,18 +296,61 @@ function fmtClock(s) {
 // the panel runs the bar against 3:20 when the source gives no length, so does the preview
 const NP_FALLBACK_DURATION_S = 200;
 
-// a line only travels the distance it actually overflows, so short ones stay still
-function _bpScroll(id, text) {
-  const el = document.getElementById(id);
-  const span = el && el.firstElementChild;
-  if (!span) return;
-  if (span.textContent !== text) span.textContent = text;
-  const over = span.offsetWidth - el.clientWidth;
-  el.classList.toggle('on', over > 1);
-  if (over > 1) {
-    el.style.setProperty('--shift', -over + 'px');
-    el.style.setProperty('--dur', (7 + over / 12).toFixed(1) + 's');
+// one speed for every line, picked on the tile the preview was drawn at
+const BP_SCROLL_REF_W  = 688;
+const BP_SCROLL_PX_S   = 20;
+const BP_SCROLL_HOLD_S = 1.2;
+const BP_SCROLL_END_S  = 1.8;
+
+function _bpLine(id, text) {
+  const span = document.getElementById(id)?.firstElementChild;
+  if (span && span.textContent !== text) span.textContent = text;
+}
+
+function bpScrollSpeed(width) {
+  return BP_SCROLL_PX_S * (width || BP_SCROLL_REF_W) / BP_SCROLL_REF_W;
+}
+
+// every line travels its own distance at the same speed, so the longest one sets the
+// cycle and the shorter ones stand at their end until it is done
+function bpScrollCycle(overs, speed) {
+  const worst = Math.max(0, ...overs);
+  return worst ? BP_SCROLL_HOLD_S + worst / speed + BP_SCROLL_END_S : 0;
+}
+
+let _bpScrollKey = '';
+
+function _bpScrollGroup(ids) {
+  const bp = document.getElementById('home-blueprint');
+  const speed = bpScrollSpeed(bp && bp.clientWidth);
+  const lines = ids.map(id => document.getElementById(id)).filter(Boolean).map(el => {
+    const over = el.firstElementChild ? el.firstElementChild.offsetWidth - el.clientWidth : 0;
+    return {el, over: over > 1 ? over : 0};
+  });
+  const cycle = bpScrollCycle(lines.map(l => l.over), speed);
+  for (const l of lines) {
+    if (!l.over) continue;
+    const p1 = BP_SCROLL_HOLD_S / cycle * 100;
+    const p2 = (BP_SCROLL_HOLD_S + l.over / speed) / cycle * 100;
+    l.el.style.setProperty('--shift', -Math.round(l.over) + 'px');
+    l.el.style.setProperty('--cycle', cycle.toFixed(2) + 's');
+    l.el.style.setProperty('--tf',
+      `linear(0 0%, 0 ${p1.toFixed(2)}%, 1 ${p2.toFixed(2)}%, 1 100%)`);
   }
+  const key = lines.map(l => Math.round(l.over)).join(',');
+  if (key === _bpScrollKey) return;
+  _bpScrollKey = key;
+  // one clock for the group, so a changed line restarts every line in the same frame
+  for (const l of lines) l.el.classList.remove('on');
+  void document.body.offsetWidth;
+  for (const l of lines) l.el.classList.toggle('on', l.over > 0);
+}
+
+// itunes renders any size on demand, the panel takes 32 and the preview this one
+const BP_COVER_PX = 600;
+
+function bpCoverUrl(url) {
+  return url ? url.replace('100x100bb', `${BP_COVER_PX}x${BP_COVER_PX}bb`) : null;
 }
 
 let _npGap = null;
@@ -275,25 +362,28 @@ function _bpNowPlaying(np) {
   const row = document.querySelector('.bp-np-row');
   if (row && row.style.getPropertyValue('--np-gap') !== _npGap)
     row.style.setProperty('--np-gap', _npGap);
-  _bpScroll('bp-track', (np && np.title) || 'Nothing playing');
-  _bpScroll('bp-artist', (np && np.artist) || '');
-  _bpScroll('bp-album', (np && np.album) || '');
+  _bpLine('bp-track', (np && np.title) || 'Nothing playing');
+  _bpLine('bp-artist', (np && np.artist) || '');
+  _bpLine('bp-album', (np && np.album) || '');
+  _bpScrollGroup(['bp-track', 'bp-artist', 'bp-album']);
 
   const img = document.getElementById('bp-cover');
   const ph = document.getElementById('bp-cover-ph');
-  const etag = np && np.cover_etag;
+  const src = bpCoverUrl(np && np.cover_url);
   if (img && ph) {
-    if (etag) {
-      if (img.dataset.etag !== etag) {
-        img.dataset.etag = etag;
-        img.src = '/nowplaying/cover?e=' + etag;
+    if (src) {
+      if (img.dataset.src !== src) {
+        img.dataset.src = src;
+        img.crossOrigin = 'anonymous';
+        img.src = src;
       }
       img.hidden = false;
       ph.hidden = true;
     } else {
       img.hidden = true;
       ph.hidden = false;
-      delete img.dataset.etag;
+      delete img.dataset.src;
+      img.removeAttribute('src');
     }
   }
 

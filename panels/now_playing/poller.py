@@ -55,7 +55,6 @@ def _ensure_network() -> None:
 
 
 PANEL_COVER_SIZE = 32
-WEB_COVER_SIZE   = 600
 
 
 def _download(url: str) -> bytes | None:
@@ -64,8 +63,8 @@ def _download(url: str) -> bytes | None:
     return img.content
 
 
-def _fetch_cover(title: str, artist: str) -> tuple[bytes | None, bytes | None]:
-    # One iTunes lookup, two renditions: 32px for the panel, 600px for the web ui.
+def _fetch_cover(title: str, artist: str) -> tuple[bytes | None, str | None]:
+    # Only the panel rendition is downloaded, the browser renders its own size from the url.
     try:
         r = requests.get(
             "https://itunes.apple.com/search",
@@ -78,11 +77,7 @@ def _fetch_cover(title: str, artist: str) -> tuple[bytes | None, bytes | None]:
             return None, None
         art = results[0]["artworkUrl100"]
         panel = _download(art.replace("100x100bb", f"{PANEL_COVER_SIZE}x{PANEL_COVER_SIZE}bb"))
-        try:
-            web = _download(art.replace("100x100bb", f"{WEB_COVER_SIZE}x{WEB_COVER_SIZE}bb"))
-        except Exception:
-            web = None
-        return panel, web
+        return panel, art
     except Exception as e:
         print(f"[cover] {e}")
         return None, None
@@ -100,7 +95,7 @@ _state = {
     "genres":     [],
     "preset":     None,   # from genre_presets
     "cover":      None,   # raw image bytes, panel resolution
-    "cover_web":  None,   # raw image bytes, web ui resolution
+    "cover_url":  None,   # itunes artwork url, any size the browser asks for
 }
 _song_start: float = 0.0   # monotonic time when current song was first seen
 
@@ -189,7 +184,7 @@ def _poll_loop() -> None:
                             "genres":       [],
                             "preset":       None,
                             "cover":        None,
-                            "cover_web":    None,
+                            "cover_url":    None,
                         })
 
                     def _fetch_metadata(_title=title, _artist=artist, _track=track):
@@ -241,7 +236,7 @@ def _poll_loop() -> None:
                             ttags       = _safe_result(f_ttags, [], "track tags")
                             atags       = _safe_result(f_atags, [], "artist tags")
                             album_name  = _safe_result(f_album, None, "album")
-                            cover, cover_web = _safe_result(f_cover, (None, None), "cover")
+                            cover, cover_url = _safe_result(f_cover, (None, None), "cover")
                             lastfm_tags = ttags + atags
                         finally:
                             # Don't block on stragglers, a hung request just finishes in the background and gets discarded.
@@ -257,7 +252,7 @@ def _poll_loop() -> None:
                                     "genres":     lastfm_tags,
                                     "preset":     preset,
                                     "cover":      cover,
-                                    "cover_web":  cover_web,
+                                    "cover_url":  cover_url,
                                 })
 
                         cover_str  = "yes" if cover else "no"

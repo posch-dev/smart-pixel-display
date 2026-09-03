@@ -64,6 +64,51 @@ function togglePanelPreview(mode, useGlobal) {
   save(mode, 'use_global_preview', useGlobal);
 }
 
+// the twin is what the home tile shows: the same state in a web face of its own
+function setTwinInHome(on) {
+  setCookie('spd_twin', on ? 'on' : 'off');
+  applyTwin(on);
+}
+
+function applyTwin(on) {
+  document.body.classList.toggle('no-twin', !on);
+  const box = document.getElementById('twin_in_home');
+  if (box) box.checked = on;
+  if (on) pollHome();
+}
+
+function twinOn() {
+  return getCookie('spd_twin') !== 'off';
+}
+
+function toggleTwinPanels() {
+  const open = document.getElementById('twin-panels').classList.toggle('open');
+  document.getElementById('twin-more').classList.toggle('on', open);
+}
+
+// the same row the panels tab used to carry, so _paintPreviewRow still finds its ids
+function buildTwinPanels() {
+  const box = document.getElementById('twin-panels');
+  if (!box) return;
+  box.innerHTML = MODES.map(m => {
+    const pre = MODULE_PREFIX[m];
+    return `<div class="row">
+      <div class="row-left"><div class="row-label">${LABELS[m]}</div></div>
+      <div class="row-right prev-row" id="${pre}_prev_row">
+        <div class="seg">
+          <button onclick="setPanelPreview('${m}','web')" id="${pre}_prev_web">Web</button>
+          <button onclick="setPanelPreview('${m}','pixel')" id="${pre}_prev_pixel">Pixel</button>
+        </div>
+        <span class="bright-div"></span>
+        <span class="bright-label" id="${pre}_prev_label">Global</span>
+        <label class="toggle"><input type="checkbox" id="${pre}_use_global_preview"
+          onchange="togglePanelPreview('${m}',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
+      </div>
+    </div>`;
+  }).join('');
+  MODES.forEach(_paintPreviewRow);
+}
+
 function setPreviewMode(mode) {
   _applyPreviewMode(mode);
   setCookie('spd_preview', mode);
@@ -93,6 +138,26 @@ function showTab(id, btn) {
   if (pane) pane.classList.add('active');
   if (btn) btn.classList.add('active');
   document.getElementById('panel-tabs').classList.toggle('visible', id === 'modules');
+  const set = document.getElementById('settings-tabs');
+  set.classList.toggle('visible', id === 'device');
+  // the settings nav comes back where it was, Device when there is nothing to come back to
+  if (id === 'device') showSetting(currentSetting());
+}
+
+function currentSetting() {
+  const id = getCookie('spd_setting');
+  return document.getElementById('set-' + id) ? id : 'device';
+}
+
+function showSetting(id, btn) {
+  if (!document.getElementById('set-' + id)) id = 'device';
+  // the button is looked up, not trusted, so a call without one still marks the nav
+  const tab = btn || document.querySelector(`#settings-tabs .panel-tab-btn[data-set="${id}"]`);
+  document.querySelectorAll('.set-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('set-' + id).classList.add('active');
+  document.querySelectorAll('#settings-tabs .panel-tab-btn')
+          .forEach(b => b.classList.toggle('active', b === tab));
+  setCookie('spd_setting', id);
 }
 
 function showPanel(id, btn) {
@@ -570,6 +635,7 @@ function closeBlueprintFull() {
 
 function pollHome() {
   if (exFrozen()) return;
+  if (!twinOn()) return;
   if (document.getElementById('tab-home')?.classList.contains('active') && !document.hidden) {
     fetch('/home').then(r => r.json()).then(data => {
       updateBlueprint(data);
@@ -654,6 +720,7 @@ function populate() {
     const el = document.getElementById('mac' + i);
     if (el) el.value = mac.split(':')[i] || '';
   }
+  setField('d_direct_connect', d.direct_connect ?? false);
   document.getElementById('flip_h').classList.toggle('on', !!d.flip_horizontal);
   document.getElementById('flip_v').classList.toggle('on', !!d.flip_vertical);
   setField('d_start_powered_off', d.start_powered_off ?? false);
@@ -1242,6 +1309,9 @@ function initAppearance() {
   setThemeMode(getCookie('spd_theme') || localStorage.getItem('theme') || 'dark');
   setAccent(getCookie('spd_accent') || localStorage.getItem('accent') || '#87a878');
   _applyPreviewMode(getCookie('spd_preview') || 'web');
+  buildTwinPanels();
+  applyTwin(twinOn());
+  showSetting(currentSetting());
 }
 
 function flipToggle(key) {

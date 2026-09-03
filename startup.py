@@ -18,7 +18,7 @@ import assets.system.scheduler as scheduler
 import assets.system.api as api
 import assets.system.webhooks as webhooks
 from panels.clock.main import DISPLAY_W, DISPLAY_H, render_frame
-from panels.verse_of_day.main import fetch_votd, fetch_passage, render_reference, FONT_PATH as _VERSE_FONT_PATH
+from panels.verse_of_day.main import fetch_votd, render_reference, FONT_PATH as _VERSE_FONT_PATH
 
 _MD_DIR = os.path.join(os.path.dirname(__file__), "panels", "dashboard")
 _NP_DIR = os.path.join(os.path.dirname(__file__), "panels", "now_playing")
@@ -37,10 +37,25 @@ import calendar_store
 from panels.now_playing.main import run_loop as np_run_loop
 
 MAC_ADDRESS     = config.get("device", "mac_address")
+DIRECT_CONNECT  = config.get("device", "direct_connect", False)
 RECONNECT_DELAY = config.get("device", "reconnect_delay", 5)
 MAX_SLOTS       = 256
 BLE_SEND_TIMEOUT = 5
 _CLOCK_TICK     = 0.5
+
+
+def _ble_target():
+    # A plain address makes bleak scan first, which fails while the display holds a
+    # stale link and stops advertising. The device object skips straight to bluez.
+    if not DIRECT_CONNECT:
+        return MAC_ADDRESS
+    from bleak.backends.device import BLEDevice
+    addr = MAC_ADDRESS.upper()
+    details = {"path": "/org/bluez/hci0/dev_" + addr.replace(":", "_"), "props": {}}
+    try:
+        return BLEDevice(addr, None, details)
+    except TypeError:
+        return BLEDevice(addr, None, details, -127)
 
 
 def _ts() -> str:
@@ -66,7 +81,7 @@ async def _wait_for_active_hour() -> None:
 
 _VERSE_CACHE_DIR  = os.path.join(os.path.dirname(__file__), "panels", "verse_of_day")
 _VERSE_CACHE_GLOB = os.path.join(_VERSE_CACHE_DIR, ".verse_cache_*.json")
-_VERSE_CACHE_SCHEMA = 2
+_VERSE_CACHE_SCHEMA = 3
 _verse_frame:     str | None = None
 _verse_cache_key: str | None = None
 _verse_reference: str | None = None
@@ -119,26 +134,15 @@ def get_verse_frame() -> str | None:
             votd = fetch_votd()
             reference = votd["reference"]
             ourmanna_text = votd["text"]
-        translation = config.get("verse_of_day", "translation", "bibleapi:kjv")
-        text = cached.get("translation") == translation and cached.get("passage")
-        passage = cached.get("passage") if text else None
-        if passage is None or cached.get("translation") != translation:
-            try:
-                passage = fetch_passage(translation, reference)
-            except Exception as e:
-                print(f"{_ts()} [verse] passage fetch failed ({e}) — using OurManna text")
-                passage = ourmanna_text
         color = tuple(config.get("verse_of_day", "color", [125, 40, 125]))
         _verse_frame = render_reference(reference, DISPLAY_W, DISPLAY_H, color=color)
         _verse_cache_key = key
         _verse_reference = reference
-        _verse_text = passage
+        _verse_text = ourmanna_text
         cached.update({
             "schema": _VERSE_CACHE_SCHEMA,
             "reference": reference,
             "text": ourmanna_text,
-            "translation": translation,
-            "passage": passage,
             "key": key,
             "frame": _verse_frame,
         })
@@ -152,14 +156,13 @@ def get_verse_frame() -> str | None:
 
 
 def get_verse_data() -> dict | None:
-    # Return cached verse data for the /home endpoint: reference, passage text, translation.
+    # Reference and translation only, the browser fetches the passage it wants to show.
     if _verse_reference is None:
         get_verse_frame()
     if _verse_reference is None:
         return None
     return {
         "reference": _verse_reference,
-        "text": _verse_text or "",
         "translation": config.get("verse_of_day", "translation", "bibleapi:kjv"),
     }
 
@@ -361,7 +364,7 @@ async def run() -> None:
         try:
             print(f"{_ts()} Connecting to {MAC_ADDRESS} ...")
             api.set_reconnect(attempting=True)
-            async with AsyncClient(MAC_ADDRESS) as client:
+            async with AsyncClient(_ble_target()) as client:
                 api.set_connected(True)
                 api.set_reconnect()
 

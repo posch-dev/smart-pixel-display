@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Smart Pixel Panel</title>
+<title>Smart Pixel Display</title>
 <link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%2032%2032'%3E%3Ccircle%20cx%3D'16'%20cy%3D'16'%20r%3D'11'%20fill%3D'%234ade80'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 <script>
@@ -53,6 +53,8 @@
   <symbol id="ico-car" viewBox="0 0 24 24"><path d="M4 13h6v2H4zm10 0h6v2h-6zM4 17h6v2H4zm10 0h6v2h-6zM2 15h4v2H2zm6 0h8v2H8zm10 0h4v2h-4zm4-4h2v4h-2zm-6-4h2v2h-2zM4 5h12v2H4zm-4 6h2v4H0zm12-2h10v2H12zM2 7h2v4H2zm8 0h2v2h-2z"/></symbol>
   <symbol id="ico-reload" viewBox="0 0 24 24"><path d="M16 4h2v6h-2zm-2-2h2v2h-2zm0 2h2v8h-2zM4 8H2v5h2z"/><path d="M4 6h16v2H4zm4 14H6v-6h2zm2 2H8v-2h2zm0-2H8v-8h2zm10-4h2v-5h-2z"/><path d="M20 18H4v-2h16z"/></symbol>
   <symbol id="ico-trash" viewBox="0 0 24 24"><path d="M18 22H6V20H18V22ZM9 6H15V4H17V6H22V8H20V20H18V8H6V20H4V8H2V6H7V4H9V6ZM15 4H9V2H15V4Z"/></symbol>
+  <symbol id="ico-settings" viewBox="0 0 24 24"><path d="M4 14h2v6H4zm5 0h2v6H9zm-5-2h7v2H4zm0 8h7v2H4zm-2-4h2v2H2zm20-8h-4V6h4z"/><path d="M10 16h12v2H10zm5-8H2V6h13zm5-4v2h-2V4zm0 6V8h-2v2zm-7-8h7v2h-7zm0 10h7v-2h-7zm0-8h2v2h-2zm0 6h2V8h-2z"/></symbol>
+  <symbol id="ico-signal" viewBox="0 0 24 24"><path d="M4 14h2v4H4zm7-4h2v8h-2zm7-6h2v14h-2zM2 14h2v5H2zm7-4h2v8H9zm7-6h2v14h-2zM6 14h2v5H6zm7-4h2v8h-2zm7-6h2v14h-2z"/><path d="M2 18h6v2H2zm7 0h6v2H9zm7 0h6v2h-6z"/></symbol>
   <symbol id="ico-globe" viewBox="0 0 24 24"><path d="M6 2h12v2H6zm0 18h12v2H6zM4 4h2v2H4zm5 0h2v2H9zm0 14h2v2H9zm4 0h2v2h-2zM7 6h2v12H7zm8 0h2v12h-2zm-2-2h2v2h-2zm7 0h-2v2h2zM2 6h2v12H2zm20 0h-2v12h2zM4 18h2v2H4zm16 0h-2v2h2z"/><path d="M3 11h18v2H3z"/></symbol>
   <symbol id="ico-chevron-down" viewBox="0 0 24 24"><path d="M3 7h3v3H3zM6 10h3v3H6zM9 13h6v3H9zM15 10h3v3h-3zM18 7h3v3h-3z"/></symbol>
   <symbol id="ico-rain" viewBox="0 0 24 24"><path d="M8 2h8v2H8zM6 4h12v2H6zM4 6h16v6H4zM6 12h12v2H6z"/><path d="M7 16h2v3H7zm4 0h2v5h-2zm4 0h2v3h-2z"/></symbol>
@@ -104,6 +106,13 @@
 
 <div class="panel-tabs" id="panel-tabs"></div>
 
+<div class="panel-tabs" id="settings-tabs">
+  <button class="panel-tab-btn" data-set="device" onclick="showSetting('device', this)">
+    <svg class="ico"><use href="#ico-settings"/></svg><span>Device</span></button>
+  <button class="panel-tab-btn" data-set="web" onclick="showSetting('web', this)">
+    <svg class="ico"><use href="#ico-signal"/></svg><span>Web</span></button>
+</div>
+
 <div id="tab-modules" class="tab-pane">
 <div class="pane-inner">
 
@@ -119,18 +128,6 @@
           <span class="bright-div"></span>
           <span class="bright-label" id="cl_global_label">Global</span>
           <label class="toggle"><input type="checkbox" id="cl_use_global" onchange="toggleUseGlobal('clock',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-left"><div class="row-label">Appearance</div></div>
-        <div class="row-right prev-row" id="cl_prev_row">
-          <div class="seg">
-            <button onclick="setPanelPreview('clock','web')" id="cl_prev_web">Web</button>
-            <button onclick="setPanelPreview('clock','pixel')" id="cl_prev_pixel">Pixel</button>
-          </div>
-          <span class="bright-div"></span>
-          <span class="bright-label" id="cl_prev_label">Global</span>
-          <label class="toggle"><input type="checkbox" id="cl_use_global_preview" onchange="togglePanelPreview('clock',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
         </div>
       </div>
       <div class="row">
@@ -173,18 +170,6 @@
           <span class="bright-div"></span>
           <span class="bright-label" id="v_global_label">Global</span>
           <label class="toggle"><input type="checkbox" id="v_use_global" onchange="toggleUseGlobal('verse_of_day',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-left"><div class="row-label">Appearance</div></div>
-        <div class="row-right prev-row" id="v_prev_row">
-          <div class="seg">
-            <button onclick="setPanelPreview('verse_of_day','web')" id="v_prev_web">Web</button>
-            <button onclick="setPanelPreview('verse_of_day','pixel')" id="v_prev_pixel">Pixel</button>
-          </div>
-          <span class="bright-div"></span>
-          <span class="bright-label" id="v_prev_label">Global</span>
-          <label class="toggle"><input type="checkbox" id="v_use_global_preview" onchange="togglePanelPreview('verse_of_day',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
         </div>
       </div>
       <div class="row">
@@ -251,18 +236,6 @@
         </div>
       </div>
       <div class="row">
-        <div class="row-left"><div class="row-label">Appearance</div></div>
-        <div class="row-right prev-row" id="np_prev_row">
-          <div class="seg">
-            <button onclick="setPanelPreview('nowplaying','web')" id="np_prev_web">Web</button>
-            <button onclick="setPanelPreview('nowplaying','pixel')" id="np_prev_pixel">Pixel</button>
-          </div>
-          <span class="bright-div"></span>
-          <span class="bright-label" id="np_prev_label">Global</span>
-          <label class="toggle"><input type="checkbox" id="np_use_global_preview" onchange="togglePanelPreview('nowplaying',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
-        </div>
-      </div>
-      <div class="row">
         <div class="row-left"><div class="row-label">Trigger</div><div class="row-sub">Hold hands or go to infinity</div></div>
         <div class="row-right"><div class="seg trig-seg" data-mode="nowplaying">
           <button class="trig-seg-hold" title="Show while pressed"><svg class="ico"><use href="#ico-hand"/></svg></button>
@@ -302,18 +275,6 @@
           <span class="bright-div"></span>
           <span class="bright-label" id="md_global_label">Global</span>
           <label class="toggle"><input type="checkbox" id="md_use_global" onchange="toggleUseGlobal('dashboard',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-left"><div class="row-label">Appearance</div></div>
-        <div class="row-right prev-row" id="md_prev_row">
-          <div class="seg">
-            <button onclick="setPanelPreview('dashboard','web')" id="md_prev_web">Web</button>
-            <button onclick="setPanelPreview('dashboard','pixel')" id="md_prev_pixel">Pixel</button>
-          </div>
-          <span class="bright-div"></span>
-          <span class="bright-label" id="md_prev_label">Global</span>
-          <label class="toggle"><input type="checkbox" id="md_use_global_preview" onchange="togglePanelPreview('dashboard',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label>
         </div>
       </div>
       <div class="row">
@@ -393,6 +354,7 @@
 
 <div id="tab-device" class="tab-pane">
 <div class="pane-inner">
+<div id="set-device" class="set-pane">
 
 <div class="card">
   <div class="card-title">Panels</div>
@@ -401,31 +363,6 @@
     <span class="prow-head-prio">PRIORITY</span>
   </div>
   <div id="panel-enabled-list"></div>
-</div>
-
-<div class="card">
-  <div class="card-title">WebUI Appearance</div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Theme</div></div>
-    <div class="row-right"><div class="seg">
-      <button onclick="setThemeMode('dark')" id="theme-dark"><svg class="ico" style="width:14px;height:14px"><use href="#ico-moon"/></svg> Dark</button>
-      <button onclick="setThemeMode('light')" id="theme-light"><svg class="ico" style="width:14px;height:14px"><use href="#ico-sun"/></svg> Light</button>
-    </div></div>
-  </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Accent Color</div></div>
-    <div class="row-right" style="gap:8px;align-items:center">
-      <span id="accent-hex" class="color-hex">#87A878</span>
-      <input type="color" id="accent-pick" value="#87a878" oninput="previewAccent(this.value)" onchange="setAccent(this.value)" title="Accent color">
-    </div>
-  </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Preview Colors</div><div class="row-sub">Blue pill keeps the accent, red pill shows the matrix</div></div>
-    <div class="row-right"><div class="seg">
-      <button onclick="setPreviewMode('web')" id="prev-web">Web</button>
-      <button onclick="setPreviewMode('pixel')" id="prev-pixel">Pixel</button>
-    </div></div>
-  </div>
 </div>
 
 <div class="card">
@@ -447,6 +384,11 @@
         <input type="text" maxlength="2" inputmode="text" autocapitalize="characters" id="mac5" placeholder="XX">
       </div>
     </div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Direct Connect</div>
+      <div class="row-sub">Skip the scan and dial the address, for a display that stopped advertising</div></div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="d_direct_connect" onchange="save('device','direct_connect',this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
   </div>
   <div class="row">
     <div class="row-left"><div class="row-label">Global Brightness</div></div>
@@ -486,6 +428,55 @@
 </div>
 
 <div id="wh-device"></div>
+</div>
+
+<div id="set-web" class="set-pane">
+<a href="/preview" target="_blank" rel="noopener" class="card card-link">
+  <span><b>Twin</b> Viewer &amp; Editor</span>
+  <svg class="ico"><use href="#ico-external"/></svg>
+</a>
+
+<div class="card">
+  <div class="card-title">WebUI Appearance</div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Theme</div></div>
+    <div class="row-right"><div class="seg">
+      <button onclick="setThemeMode('dark')" id="theme-dark"><svg class="ico" style="width:14px;height:14px"><use href="#ico-moon"/></svg> Dark</button>
+      <button onclick="setThemeMode('light')" id="theme-light"><svg class="ico" style="width:14px;height:14px"><use href="#ico-sun"/></svg> Light</button>
+    </div></div>
+  </div>
+  <div class="row">
+    <div class="row-left"><div class="row-label">Accent Color</div></div>
+    <div class="row-right" style="gap:8px;align-items:center">
+      <span id="accent-hex" class="color-hex">#87A878</span>
+      <input type="color" id="accent-pick" value="#87a878" oninput="previewAccent(this.value)" onchange="setAccent(this.value)" title="Accent color">
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-left">
+      <div class="row-label">Twin in Home</div>
+      <div class="row-sub">The Live modern Preview over the Panel grid in Home</div>
+    </div>
+    <div class="row-right"><label class="toggle"><input type="checkbox" id="twin_in_home" onchange="setTwinInHome(this.checked)"><div class="t-track"></div><div class="t-thumb"></div></label></div>
+  </div>
+  <div id="twin-colors">
+    <div class="row">
+      <div class="row-left"><div class="row-label">Twin Colors</div><div class="row-sub">Blue pill keeps the accent, red pill shows the matrix</div></div>
+      <div class="row-right">
+        <div class="seg">
+          <button onclick="setPreviewMode('web')" id="prev-web">Web</button>
+          <button onclick="setPreviewMode('pixel')" id="prev-pixel">Pixel</button>
+        </div>
+        <button class="row-more" id="twin-more" onclick="toggleTwinPanels()" title="Per panel">
+          <svg class="ico"><use href="#ico-chevron-down"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="twin-panels"></div>
+  </div>
+</div>
+
+</div>
 </div>
 </div>
 
@@ -550,12 +541,13 @@
 
 <div id="bp-full-overlay" class="modal-overlay" onclick="if(event.target===this)closeBlueprintFull()">
   <div id="bp-full-tools">
+    <a href="/preview" target="_blank" rel="noopener" class="bp-full-tool bp-full-twin" title="Open in a new tab">
+      <span><b>Twin</b> Viewer &amp; Editor</span>
+      <svg class="ico"><use href="#ico-external"/></svg>
+    </a>
     <button class="bp-full-tool" onclick="openExport()" title="Export">
       <svg class="ico"><use href="#ico-download"/></svg>
     </button>
-    <a href="/preview" target="_blank" rel="noopener" class="bp-full-tool" title="Open in a new tab">
-      <svg class="ico"><use href="#ico-external"/></svg>
-    </a>
     <button class="bp-full-tool" onclick="closeBlueprintFull()" title="Shrink">
       <svg class="ico"><use href="#ico-close"/></svg>
     </button>
