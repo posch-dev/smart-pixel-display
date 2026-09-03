@@ -259,8 +259,15 @@ function _bpScroll(id, text) {
   }
 }
 
+let _npGap = null;
+
 function _bpNowPlaying(np) {
   const playing = !!(np && np.playing && np.title);
+  // five spaces between the two halves, measured in the face the artist is set in
+  if (_npGap === null) _npGap = (rNpRowGap(2.8 * CQ) / CQ).toFixed(2) + 'cqw';
+  const row = document.querySelector('.bp-np-row');
+  if (row && row.style.getPropertyValue('--np-gap') !== _npGap)
+    row.style.setProperty('--np-gap', _npGap);
   _bpScroll('bp-track', (np && np.title) || 'Nothing playing');
   _bpScroll('bp-artist', (np && np.artist) || '');
   _bpScroll('bp-album', (np && np.album) || '');

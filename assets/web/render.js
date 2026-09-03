@@ -107,6 +107,17 @@ function text(x, y, str, size, fill, opt = {}) {
 }
 
 const group = (x, y, children) => ({op: 'group', x, y, children});
+
+// marks an op that looks the same at every t
+const still = o => (o.st = true, o);
+
+// the leading run of unchanging ops. a run rather than a pick, because an op lifted
+// out from under a moving one would come back on top of it
+function rStaticRun(ops) {
+  let n = 0;
+  while (n < ops.length && ops[n].st) n++;
+  return n;
+}
 const glow = (x, y, w, h, r, fill, blur) => ({op: 'glow', x, y, w, h, r, fill, blur});
 const gradient = (x, y, w, h, r, from, to) => ({op: 'gradient', x, y, w, h, r, from, to});
 const ring = (x, y, w, h, r, stroke, width) => ({op: 'ring', x, y, w, h, r, stroke, width});
@@ -114,11 +125,15 @@ const ring = (x, y, w, h, r, stroke, width) => ({op: 'ring', x, y, w, h, r, stro
 // the tile on the page ground, the way the preview page shows it
 const R_FRAME_PAD = 0.05;
 
-function rFramed(ops, pal) {
+function rFramed(ops, pal, splitAt) {
   const w = R_W / (1 - 2 * R_FRAME_PAD);
   const pad = w * R_FRAME_PAD;
   const h = R_H + 2 * pad;
-  return {w, h, ops: [rect(0, 0, w, h, pal.bg), group(pad, pad, ops)]};
+  const n = splitAt == null ? ops.length : splitAt;
+  const out = [still(rect(0, 0, w, h, pal.bg))];
+  if (n) out.push(still(group(pad, pad, ops.slice(0, n))));
+  if (n < ops.length) out.push(group(pad, pad, ops.slice(n)));
+  return {w, h, ops: out};
 }
 
 // a group that clips its children and slides them, the scrolling line
@@ -142,6 +157,19 @@ function rScrollPlan(textW, boxW) {
 }
 
 function _ease(u) { return u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u); }
+
+// the artist takes what its name needs and no more than three fifths of the row, the
+// album gets the rest and only travels when that is not enough
+const NP_ARTIST_MAX = 0.6;
+const NP_GAP_SPACES = 5;
+
+function rNpRowGap(size) { return rTextWidth(' '.repeat(NP_GAP_SPACES), size); }
+
+function rNpRowSplit(mw, artNat, size) {
+  const gap = rNpRowGap(size);
+  const artW = Math.min(artNat, mw * NP_ARTIST_MAX);
+  return {gap, artW, albW: Math.max(0, mw - artW - gap)};
+}
 
 // keyframes 0 and 14 percent at rest, 50 and 64 percent at the far end
 function rScrollAt(plan, t) {
@@ -170,8 +198,8 @@ const R_RADIUS = R_W * 12 / R_RASTER_REF;
 
 function _rBackground(pal) {
   const cell = rRasterCell();
-  return [rect(0, 0, R_W, R_H, pal.card, R_RADIUS),
-          {op: 'raster', cell, fill: pal.raster, opacity: 0.5, r: R_RADIUS}];
+  return [still(rect(0, 0, R_W, R_H, pal.card, R_RADIUS)),
+          still({op: 'raster', cell, fill: pal.raster, opacity: 0.5, r: R_RADIUS})];
 }
 
 function _rClock(scene, t, pal, animate, decl) {
@@ -248,15 +276,15 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   const covR = 1.6 * CQ;
   if (scene.cover) {
     // the artwork throws the panel colour outwards, the placeholder carries it instead
-    ops.push(glow(R_PAD, covY, cov, cov, covR, rAlpha(pal.np1, 0.34), 3.4 * CQ));
-    ops.push({op: 'image', x: R_PAD, y: covY, w: cov, h: cov, r: covR, href: scene.cover});
+    ops.push(still(glow(R_PAD, covY, cov, cov, covR, rAlpha(pal.np1, 0.415), 4.15 * CQ)));
+    ops.push(still({op: 'image', x: R_PAD, y: covY, w: cov, h: cov, r: covR, href: scene.cover}));
   } else {
-    ops.push(gradient(R_PAD, covY, cov, cov, covR,
-                      rMix(pal.np1, pal.input, 0.22), rMix(pal.np3, pal.input, 0.06)));
-    ops.push(ring(R_PAD, covY, cov, cov, covR, rAlpha(pal.np1, 0.4), 0.2 * CQ));
+    ops.push(still(gradient(R_PAD, covY, cov, cov, covR,
+                            rMix(pal.np1, pal.input, 0.22), rMix(pal.np3, pal.input, 0.06))));
+    ops.push(still(ring(R_PAD, covY, cov, cov, covR, rAlpha(pal.np1, 0.4), 0.2 * CQ)));
     const note = icon('#ico-music', R_PAD + (cov - 7 * CQ) / 2, covY + (cov - 7 * CQ) / 2,
                       7 * CQ, 7 * CQ, pal.np1);
-    if (note) ops.push(note);
+    if (note) ops.push(still(note));
   }
 
   const mx = R_PAD + cov + gap;
@@ -279,8 +307,10 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
     _rScrollAnim(tPlan, decling)));
   y += trackLine;
 
-  const albW = Math.min(plans.album?.boxW ?? rTextWidth(scene.album, albSize), mw * 0.42);
-  const artW = mw - albW - 2 * CQ;
+  const artNat = plans.artist?.textW ?? rTextWidth(scene.artist, artSize);
+  const split = rNpRowSplit(mw, artNat, artSize);
+  const artW = plans.artist?.boxW ?? split.artW;
+  const albW = plans.album?.boxW ?? Math.max(0, mw - artW - split.gap);
   const aPlan = plans.artist || rScrollPlan(rTextWidth(scene.artist, artSize), artW);
   const lPlan = plans.album || rScrollPlan(rTextWidth(scene.album, albSize), albW);
   // both sit on the artist baseline, the row aligns on it
@@ -482,25 +512,66 @@ function rOpsToSvg(ops, width, css, box) {
 
 // ---- canvas backend -------------------------------------------------------
 
+// the shine off the cover never changes, so the gaussian runs once and the result is
+// stamped from then on
+let _rGlow = null;
+
+function _rGlowStamp(o, k) {
+  const key = [o.w, o.h, o.r, o.fill, o.blur, k.toFixed(3)].join('|');
+  if (_rGlow && _rGlow.key === key) return _rGlow;
+  const pad = 2 * o.blur;
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil((o.w + 2 * pad) * k);
+  cv.height = Math.ceil((o.h + 2 * pad) * k);
+  const c = cv.getContext('2d');
+  c.scale(k, k);
+  c.shadowColor = o.fill;
+  c.shadowBlur = o.blur * k;
+  c.fillStyle = o.fill;
+  _roundRect(c, pad, pad, o.w, o.h, o.r);
+  c.fill();
+  _rGlow = {key, cv, pad, w: cv.width / k, h: cv.height / k};
+  return _rGlow;
+}
+
+// the dots are one tile the browser stamps, not seven thousand arcs on every frame
+let _rRaster = null;
+
+function _rRasterFill(ctx, o, k) {
+  const key = [o.cell.toFixed(3), o.fill, k.toFixed(3)].join('|');
+  if (!_rRaster || _rRaster.key !== key) {
+    const px = Math.max(2, Math.round(o.cell * k));
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = px;
+    const t = tile.getContext('2d');
+    t.fillStyle = o.fill;
+    t.beginPath();
+    t.arc(px / 2, px / 2, px / 4, 0, Math.PI * 2);
+    t.fill();
+    const pat = ctx.createPattern(tile, 'repeat');
+    pat.setTransform(new DOMMatrix([o.cell / px, 0, 0, o.cell / px, 0, 0]));
+    _rRaster = {key, pat};
+  }
+  return _rRaster.pat;
+}
+
 function _roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   if (r) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
 }
 
 function rOpsToCanvas(ctx, ops, images) {
+  // a canvas shadow is laid on in output pixels and ignores the transform, so the blur
+  // is scaled by hand or the glow tightens the wider the file gets
+  const k = ctx.getTransform().a;
   for (const o of ops) {
     if (o.op === 'rect') {
       ctx.fillStyle = o.fill;
       _roundRect(ctx, o.x, o.y, o.w, o.h, o.r);
       ctx.fill();
     } else if (o.op === 'glow') {
-      ctx.save();
-      ctx.shadowColor = o.fill;
-      ctx.shadowBlur = o.blur;
-      ctx.fillStyle = o.fill;
-      _roundRect(ctx, o.x, o.y, o.w, o.h, o.r);
-      ctx.fill();
-      ctx.restore();
+      const g = _rGlowStamp(o, k);
+      ctx.drawImage(g.cv, o.x - g.pad, o.y - g.pad, g.w, g.h);
     } else if (o.op === 'gradient') {
       const g = ctx.createLinearGradient(o.x, o.y, o.x + o.w, o.y + o.h);
       g.addColorStop(0, o.from);
@@ -547,15 +618,8 @@ function rOpsToCanvas(ctx, ops, images) {
       _roundRect(ctx, 0, 0, R_W, R_H, o.r);
       ctx.clip();
       ctx.globalAlpha = o.opacity;
-      ctx.fillStyle = o.fill;
-      const rr = o.cell / 4;
-      for (let y = o.cell / 2; y < R_H; y += o.cell) {
-        for (let x = o.cell / 2; x < R_W; x += o.cell) {
-          ctx.beginPath();
-          ctx.arc(x, y, rr, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+      ctx.fillStyle = _rRasterFill(ctx, o, k);
+      ctx.fillRect(0, 0, R_W, R_H);
       ctx.restore();
     } else if (o.op === 'group') {
       ctx.save();

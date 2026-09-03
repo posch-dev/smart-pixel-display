@@ -37,6 +37,7 @@ function setPvAccent(hex) {
   pv.accent = clampAccent(hex);
   previewAccent(pv.accent);
   document.getElementById('pv-accent').value = pv.accent;
+  paintPvFavicon();
   savePv();
 }
 
@@ -96,6 +97,17 @@ document.addEventListener('pointerdown', e => {
   if (menu.contains(e.target) || document.getElementById('pv-burger').contains(e.target)) return;
   menu.classList.remove('show');
 });
+
+// the page has no link of its own, so its tab carries the accent instead
+function paintPvFavicon() {
+  const link = document.getElementById('favicon');
+  if (!link) return;
+  const col = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">`
+            + `<rect x="2" y="9" width="28" height="14" rx="3"`
+            + ` fill="${col || '#4ade80'}"/></svg>`;
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
 
 function pollPreview() {
   if (exFrozen()) return;

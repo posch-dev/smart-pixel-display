@@ -65,7 +65,9 @@ header {
 .header-center { display: flex; align-items: center; gap: 0; position: relative; }
 .status-pill {
   display: flex; align-items: center; gap: 7px;
-  background: var(--card); border: 1px solid var(--border);
+  border: 1px solid transparent;
+  background: linear-gradient(var(--card), var(--card)) padding-box,
+              linear-gradient(90deg, var(--link), var(--mode-col)) border-box;
   border-radius: 20px; padding: 6px 36px; font-size: 12px;
   margin: 0 -20px; height: 34px; box-sizing: border-box;
   justify-content: center; white-space: nowrap;
@@ -106,10 +108,13 @@ header {
 #power-btn:hover, #mode-btn:hover { filter: brightness(1.2); }
 #power-btn.off { color: var(--red); }
 
-/* the ring carries the link state, the glyph stays the power state */
-#power-btn { --link: var(--green); border-color: var(--link); animation: ring-breathe var(--pulse-s) ease-in-out infinite; }
-#power-btn.clearing { --link: var(--blue); }
-#power-btn.down     { --link: var(--red); }
+/* the ring carries the link state, the glyph stays the power state. both colours
+   live on the row so the pill between the buttons can read them too. */
+.header-center { --link: var(--green); --mode-col: var(--auto-col); }
+.header-center.clearing { --link: var(--blue); }
+.header-center.down     { --link: var(--red); }
+.header-center.manual   { --mode-col: var(--manual-col); }
+#power-btn { border-color: var(--link); animation: ring-breathe var(--pulse-s) ease-in-out infinite; }
 @keyframes ring-breathe {
   0%, 100% { border-color: var(--link); }
   50%      { border-color: color-mix(in srgb, var(--link) 45%, var(--border)); }
@@ -126,8 +131,15 @@ header {
 #mode-btn.manual .ico-bot { color: var(--manual-col); }
 #mode-btn.manual { border-color: var(--manual-col); }
 /* one pair of colours for the whole ui: scheduler against user override */
-:root { --auto-col: var(--accent); --manual-col: var(--accent-c); --pulse-s: 3.4s; }
+:root { --auto-col: var(--accent); --manual-col: var(--accent-c); --pulse-s: 3.4s; --zoom: 1; }
 [data-preview="pixel"] { --auto-col: #00a2ff; --manual-col: #ff9c00; }
+
+/* a tenth bigger on desktop, the way a browser at 110 percent draws it. viewport
+   units do not shrink with zoom, so every one of them is divided back out. */
+@media (min-width: 501px) {
+  :root { --zoom: 1.1; }
+  body { zoom: var(--zoom); }
+}
 
 .tab-bar {
   position: sticky; top: var(--hdr-h, calc(55px + env(safe-area-inset-top))); z-index: 99;
@@ -150,7 +162,7 @@ header {
   padding: 0 12px; gap: 2px;
 }
 .panel-tabs.visible { display: flex; }
-.tab-bar, .panel-tabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tab-bar, .panel-tabs { justify-content: safe center; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .tab-bar::-webkit-scrollbar, .panel-tabs::-webkit-scrollbar { display: none; }
 .panel-tab-btn {
   padding: 13px 14px; border: none; background: none; cursor: pointer;
@@ -159,14 +171,13 @@ header {
   display: flex; align-items: center; gap: 7px;
 }
 .panel-tab-btn .ico { width: 15px; height: 15px; }
-.panel-tab-fan { margin-left: auto; }
 .panel-tab-fan .chev { width: 13px; height: 13px; transition: transform .15s; }
 .panel-tab-fan.active .chev { transform: rotate(180deg); }
 
 .prow { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .prow:last-child { border-bottom: none; }
 .prow-grip {
-  width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; cursor: grab;
+  width: 12px; height: 17px; color: var(--muted); flex-shrink: 0; cursor: grab;
   touch-action: none; -webkit-tap-highlight-color: transparent;
 }
 .prow-grip:hover { color: var(--text); }
@@ -183,7 +194,7 @@ header {
   display: flex; justify-content: space-between; align-items: baseline;
   padding: 12px 16px 10px; font-size: 11px; color: var(--muted);
 }
-.prow-head-prio { margin-right: 54px; letter-spacing: .6px; }
+.prow-head-prio { margin-right: 54px; letter-spacing: .6px; font-weight: 700; }
 .panel-tab-btn:hover { color: var(--text); }
 .panel-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 .panel-pane { display: none; }
@@ -297,7 +308,21 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   background: var(--card); border: 1px solid var(--border); border-radius: 12px;
   width: 100%; max-width: 480px; overflow: hidden;
 }
-.wh-modal { max-width: 720px; max-height: 85vh; overflow-y: auto; }
+/* the export card after the button: what is being written, then how far it is */
+.ex-sum { padding: 6px 16px 14px; display: flex; flex-direction: column; gap: 7px; }
+.ex-sum-row { display: flex; gap: 12px; align-items: baseline; font-size: 12px; }
+.ex-sum-k { color: var(--muted); width: 96px; flex-shrink: 0; }
+.ex-sum-v { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.ex-swatch {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  border: 1px solid var(--border); margin-right: 7px; vertical-align: -1px;
+}
+.ex-prog { padding: 12px 16px; border-top: 1px solid var(--border); }
+.ex-bar { height: 6px; border-radius: 3px; background: var(--input); overflow: hidden; }
+.ex-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width .12s linear; }
+.ex-prog-line { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 7px; }
+
+.wh-modal { max-width: 720px; max-height: calc(85vh / var(--zoom)); overflow-y: auto; }
 .modal-title {
   padding: 12px 16px; border-bottom: 1px solid var(--border);
   font-size: 14px; font-weight: 700; color: var(--text);
@@ -435,7 +460,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 #bp-full-slot { width: 90%; }
 
 /* the preview on a page of its own */
-.pv-body { min-height: 100dvh; display: flex; align-items: center; justify-content: center; }
+.pv-body { min-height: calc(100dvh / var(--zoom)); display: flex; align-items: center; justify-content: center; }
 .pv-stage { width: 90%; }
 #pv-burger {
   position: fixed; top: 14px; right: 14px; z-index: 2;
@@ -445,9 +470,9 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 }
 #pv-burger:hover { color: var(--text); border-color: var(--accent); }
 #pv-menu {
-  display: none; position: fixed; top: 56px; right: 14px; z-index: 2; width: 320px; max-width: calc(100vw - 28px);
+  display: none; position: fixed; top: 56px; right: 14px; z-index: 2; width: 320px; max-width: calc(100vw / var(--zoom) - 28px);
   background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-  max-height: calc(100dvh - 76px); overflow-y: auto;
+  max-height: calc(100dvh / var(--zoom) - 76px); overflow-y: auto;
 }
 #pv-menu.show { display: block; }
 #pv-menu .row:last-child { border-bottom: none; }
@@ -456,7 +481,7 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 .ex-panel { font-weight: 700; }
 .ex-what {
   font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted);
-  font-size: 12px; margin-top: 2px; overflow: hidden;
+  font-size: 12px; margin-top: 2px; overflow: hidden; white-space: pre-wrap;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .pv-export { border-color: var(--accent); color: var(--accent); padding: 6px 14px; }
@@ -513,12 +538,12 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   box-shadow: inset 0 0 0 .2cqw color-mix(in srgb, var(--np1, var(--accent)) 40%, transparent);
 }
 .bp-cover-ph .ico { width: 7cqw; height: 7cqw; color: var(--np1, var(--accent)); }
-.bp-cover { box-shadow: 0 0 3.4cqw color-mix(in srgb, var(--np1, var(--accent)) 34%, transparent); }
+.bp-cover { box-shadow: 0 0 4.15cqw color-mix(in srgb, var(--np1, var(--accent)) 41.5%, transparent); }
 .bp-np-meta { flex: 1; min-width: 0; }
-.bp-np-row { display: flex; align-items: baseline; gap: 2cqw; }
+.bp-np-row { display: flex; align-items: baseline; gap: var(--np-gap, 3.5cqw); }
 .bp-track { font-size: 4.2cqw; font-weight: 700; color: var(--np1, var(--accent)); text-align: left; }
-.bp-album { font-size: 2.4cqw; color: var(--muted); justify-content: safe flex-end; max-width: 42%; }
-.bp-artist { font-size: 2.8cqw; text-align: left; flex: 1; min-width: 0; color: var(--muted-hi); }
+.bp-album { font-size: 2.4cqw; color: var(--muted); justify-content: safe flex-end; flex: 1 1 0; min-width: 0; }
+.bp-artist { font-size: 2.8cqw; text-align: left; flex: 0 0 auto; max-width: 60%; min-width: 0; color: var(--muted-hi); }
 
 /* long lines run the same way the panel scrolls them: out, pause, back */
 .bp-scroll { display: flex; overflow: hidden; }
@@ -587,7 +612,6 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   .slider-wrap { width: 130px; }
   .row { flex-wrap: wrap; }
   .tab-btn { padding: 11px 12px; font-size: 12px; }
-  .tab-bar, .panel-tabs { justify-content: safe center; }
 
   /* name over glyphs over pill, each row its own line */
   header {

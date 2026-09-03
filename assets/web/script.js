@@ -316,6 +316,19 @@ function tickHeaderClock() {
   el.textContent = _uptimeAt ? fmtUptime(_uptimeBase + (Date.now() - _uptimeAt) / 1000) : '\u2014';
 }
 
+// the tab icon is the status dot the header gave up: green up, blue clearing, red down
+let _favState = null;
+
+function paintFavicon(state) {
+  const link = document.getElementById('favicon');
+  if (!link || state === _favState) return;
+  _favState = state;
+  const col = getComputedStyle(document.documentElement).getPropertyValue('--' + state).trim();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">`
+            + `<circle cx="16" cy="16" r="11" fill="${col || '#4ade80'}"/></svg>`;
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
 function paintLink() {
   const clearing = _linkUp && !!statusData.clearing;
   const pill = document.getElementById('status-pill');
@@ -324,11 +337,12 @@ function paintLink() {
     pill.classList.toggle('clearing', clearing);
   }
   // the power ring is the status dot now: green up, blue clearing, red down
-  const btn = document.getElementById('power-btn');
-  if (btn) {
-    btn.classList.toggle('down', !_linkUp);
-    btn.classList.toggle('clearing', clearing);
+  const head = document.querySelector('.header-center');
+  if (head) {
+    head.classList.toggle('down', !_linkUp);
+    head.classList.toggle('clearing', clearing);
   }
+  paintFavicon(!_linkUp ? 'red' : clearing ? 'blue' : 'green');
 }
 
 function updatePowerBtn() {
@@ -427,6 +441,7 @@ function updateModeBtn(auto) {
   if (!btn) return;
   btn.classList.toggle('auto', auto);
   btn.classList.toggle('manual', !auto);
+  document.querySelector('.header-center')?.classList.toggle('manual', !auto);
   btn.title = auto ? 'Scheduler, click to hold the current panel' : 'Manual, click to hand back to the scheduler';
 }
 
