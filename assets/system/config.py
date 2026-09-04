@@ -69,11 +69,21 @@ def _short(value) -> str:
     return text if len(text) <= 60 else text[:57] + "..."
 
 
+def _without_none(value):
+    # tomlkit has no null, an empty field arrives as None and has to drop out
+    if isinstance(value, dict):
+        return {k: _without_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, (list, tuple)):
+        return [_without_none(v) for v in value if v is not None]
+    return value
+
+
 def set(section: str, key: str, value) -> None:
     doc = _ensure()
     if section not in doc:
         doc[section] = tomlkit.table()
     old = doc[section].get(key)
+    value = _without_none(value)
     if value is None:
         doc[section].pop(key, None)
     else:

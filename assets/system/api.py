@@ -5,6 +5,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, make_response
+from werkzeug.exceptions import HTTPException
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
@@ -22,6 +23,15 @@ import calendar_store
 import weather as weather_mod
 
 app = Flask(__name__)
+
+
+@app.errorhandler(Exception)
+def _json_error(exc):
+    # the web ui reads every failure as json, an html error page lands in a toast
+    if isinstance(exc, HTTPException):
+        return jsonify({"error": exc.description}), exc.code
+    log.error("api", f"{request.path}: {type(exc).__name__}: {exc}")
+    return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 
 def _mode_color_ctx(mode: str) -> dict | None:
@@ -147,7 +157,11 @@ def set_config(section, key):
     body = request.get_json(silent=True)
     if body is None or "value" not in body:
         return jsonify({"error": 'expected {"value": ...}'}), 400
-    config.set(section, key, body["value"])
+    try:
+        config.set(section, key, body["value"])
+    except Exception as exc:
+        log.error("api", f"{section}.{key} rejected: {exc}")
+        return jsonify({"error": f"{section}.{key} not writable: {exc}"}), 400
     return jsonify({"ok": True, "section": section, "key": key, "value": body["value"]}), 200
 
 

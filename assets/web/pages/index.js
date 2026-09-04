@@ -340,6 +340,12 @@ function toast(msg, type='ok') {
   clearTimeout(el._t); el._t = setTimeout(() => el.className = '', 2200);
 }
 
+// every api failure answers with json, an html error page would land in the toast
+async function errorText(response) {
+  const detail = await response.json().catch(() => null);
+  return (detail && detail.error) || ('HTTP ' + response.status);
+}
+
 async function togglePower() {
   const next = !_displayOn;
   try {
@@ -347,7 +353,7 @@ async function togglePower() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({on: next})
     });
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) throw new Error(await errorText(r));
     _displayOn = next;
     toast(next ? 'Display On' : 'Display Off');
   } catch(e) { toast('Error: ' + e.message, 'err'); }
@@ -454,7 +460,7 @@ async function save(section, key, value) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({value})
     });
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) throw new Error(await errorText(r));
     toast('Saved');
   } catch(e) { toast('Error: ' + e.message, 'err'); }
 }
@@ -876,13 +882,18 @@ function onWeatherProviderChange() {
 }
 function saveWeather() {
   const units = document.getElementById('w_u_imperial').classList.contains('on') ? 'imperial' : 'metric';
-  save('dashboard','weather',{
+  const weather = {
     provider: document.getElementById('w_provider').value,
     units:    units,
-    lat:      +document.getElementById('w_lat').value || null,
-    lon:      +document.getElementById('w_lon').value || null,
-    location: document.getElementById('w_location').value || null,
-  });
+  };
+  // an empty field leaves its key out, toml has no null to store
+  const lat      = document.getElementById('w_lat').value.trim();
+  const lon      = document.getElementById('w_lon').value.trim();
+  const location = document.getElementById('w_location').value.trim();
+  if (lat)      weather.lat      = +lat;
+  if (lon)      weather.lon      = +lon;
+  if (location) weather.location = location;
+  save('dashboard', 'weather', weather);
 }
 
 const POLL_ACTIVE  = 1000;
