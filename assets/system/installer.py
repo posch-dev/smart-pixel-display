@@ -31,6 +31,9 @@ OLD_SERVICE     = "smartpixeldashboard"
 OLD_TASK        = "SmartPixelDashboard"
 SHORTCUTS_REPO  = "https://github.com/posch-dev/apple-shortcuts"
 SCAN_SECONDS    = 6.0
+LIKELY_NAMES    = ("LED", "BLE", "MATRIX", "PIXEL", "IPIXEL", "IDM", "IDOTMATRIX", "DIVOOM", "DOT")
+LASTFM_KEYS     = ("LASTFM_API_KEY", "LASTFM_SECRET", "LASTFM_USERNAME")
+LIBREFM_KEYS    = ("LIBREFM_USERNAME", "LIBREFM_PASSWORD")
 
 GREEN, YELLOW, RED, DIM, RESET = "\033[0;32m", "\033[1;33m", "\033[0;31m", "\033[2m", "\033[0m"
 
@@ -51,8 +54,8 @@ def _abort():
     fail("Aborted, nothing written.")
 
 
-def _ask(prompt, default=None, secret=False):
-    shown = f" [{default}]" if default not in (None, "") else ""
+def _ask(prompt, default=None, secret=False, show_default=True):
+    shown = f" [{default}]" if show_default and default not in (None, "") else ""
     if _auto:
         return default or ""
     try:
@@ -84,9 +87,9 @@ def _ask_choice(prompt, choices, default):
         warn(f"Pick one of: {', '.join(choices)}")
 
 
-def _ask_float(prompt, default):
+def _ask_float(prompt, default, show_default=True):
     while True:
-        answer = _ask(prompt, default)
+        answer = _ask(prompt, default, show_default=show_default)
         try:
             return float(answer)
         except ValueError:
@@ -123,26 +126,52 @@ def _scan_devices():
     return sorted(found, key=lambda d: (d.name or "").lower())
 
 
+def _looks_like_display(device):
+    name = (device.name or "").upper()
+    return any(word in name for word in LIKELY_NAMES)
+
+
+def _print_group(label, devices, first):
+    if label:
+        print(f"  {label}")
+    for number, device in enumerate(devices, first):
+        print(f"  {number:>2}  {(device.name or 'Unknown'):<24}{device.address}")
+
+
+def _list_devices(devices):
+    likely = [d for d in devices if _looks_like_display(d)]
+    other  = [d for d in devices if not _looks_like_display(d)]
+    if not likely:
+        _print_group(None, devices, 1)
+        print()
+        return devices
+    _print_group("Most likely", likely, 1)
+    if other:
+        _print_group("Other devices", other, len(likely) + 1)
+    print()
+    return likely + other
+
+
 def _pick_mac(current):
     if not _auto and _ask_yes_no("Scan for the display over Bluetooth?", True):
-        info(f"Scanning for {SCAN_SECONDS:.0f} seconds ...")
+        info("Scanning for devices ...")
         devices = _scan_devices()
         if not devices:
             warn("No devices found.")
-        for number, device in enumerate(devices, 1):
-            print(f"  {number:>2}  {(device.name or 'Unknown'):<24}{device.address}")
-        print()
-        while True:
-            answer = _ask_int("Number of your display, 99 to type it, 0 to abort", 99)
-            if answer == 0:
+        ordered = _list_devices(devices) if devices else []
+        while ordered:
+            answer = _ask("Number of your display, manual to type the address, 0 to abort", "manual").lower()
+            if answer == "0":
                 _abort()
-            if answer == 99:
+            if answer in ("manual", "type"):
                 break
-            if 1 <= answer <= len(devices):
-                mac = _normalize_mac(devices[answer - 1].address)
+            if answer.isdigit() and 1 <= int(answer) <= len(ordered):
+                mac = _normalize_mac(ordered[int(answer) - 1].address)
                 if mac:
                     return mac
-            warn("Not on the list.")
+                warn("That one has no usable address, type it by hand.")
+                break
+            warn("Not on the list. Give a number, or manual to type the address.")
     while True:
         answer = _ask("MAC address of the display, with or without colons", current)
         mac = _normalize_mac(answer)
@@ -192,25 +221,46 @@ def _ask_env(env, key, prompt, secret=False, optional=False):
     return answer
 
 
+def _detect_scrobbler(env):
+    has_lastfm  = any(env.get(key) for key in LASTFM_KEYS)
+    has_librefm = any(env.get(key) for key in LIBREFM_KEYS)
+    if has_lastfm == has_librefm:
+        return None
+    return "lastfm" if has_lastfm else "librefm"
+
+
 def _ask_nowplaying(env, doc):
-    scrobbler = _ask_choice("Scrobbler", ["lastfm", "librefm"], doc["nowplaying"]["scrobbler"])
-    wanted    = {}
+    detected = _detect_scrobbler(env)
+    if detected:
+        label = "last.fm" if detected == "lastfm" else "libre.fm"
+        info(f"Keys in .env detected for {label}")
+        info(f"{label} selected as scrobbling source")
+        for key in (LASTFM_KEYS if detected == "lastfm" else LIBREFM_KEYS):
+            if not env.get(key):
+                warn(f"Missing {key}, please enter it below")
+        scrobbler = detected
+    else:
+        scrobbler = _ask_choice("Scrobbler", ["lastfm", "librefm"], doc["nowplaying"]["scrobbler"])
+    print(f"{DIM}  Type skip at any of these to leave now playing off and move on.{RESET}")
+    wanted = {}
     if scrobbler == "lastfm":
-        print(f"{DIM}  Keys: https://www.last.fm/api/account/create{RESET}")
+        print(f"{DIM}  Create the keys first at https://www.last.fm/api/account/create{RESET}")
         wanted["LASTFM_API_KEY"]  = _ask_env(env, "LASTFM_API_KEY", "last.fm API key")
         wanted["LASTFM_SECRET"]   = _ask_env(env, "LASTFM_SECRET", "last.fm shared secret")
         wanted["LASTFM_USERNAME"] = _ask_env(env, "LASTFM_USERNAME", "last.fm username")
     else:
         wanted["LIBREFM_USERNAME"] = _ask_env(env, "LIBREFM_USERNAME", "libre.fm username")
         wanted["LIBREFM_PASSWORD"] = _ask_env(env, "LIBREFM_PASSWORD", "libre.fm password", secret=True)
-    print(f"{DIM}  Optional but recommended, without it the bpm readout stays empty.{RESET}")
-    print(f"{DIM}  Key: https://getsongbpm.com/api{RESET}")
+    print(f"{DIM}  Optional, the bpm readout stays empty without it.{RESET}")
+    print(f"{DIM}  Key from https://getsongbpm.com/api{RESET}")
     wanted["GETSONGBPM_API_KEY"] = _ask_env(env, "GETSONGBPM_API_KEY", "getsongbpm API key", optional=True)
     doc["nowplaying"]["scrobbler"] = scrobbler
     return wanted, all(wanted[key] for key in wanted if key != "GETSONGBPM_API_KEY")
 
 
 def _ask_dashboard(doc):
+    print(f"{DIM}  Calendar events arrive from an iPhone shortcut posting to /calendar.{RESET}")
+    print(f"{DIM}  Ready made shortcuts: {SHORTCUTS_REPO}{RESET}")
     weather = doc["dashboard"]["weather"]
     weather["provider"] = _ask_choice("Weather provider", ["openmeteo", "wttr", "nws"], weather["provider"])
     weather["units"]    = _ask_choice("Units", ["metric", "imperial"], weather["units"])
@@ -218,10 +268,11 @@ def _ask_dashboard(doc):
         location = _ask("City name, empty to use coordinates", weather.get("location", ""))
         if location:
             weather["location"] = location
-    weather["lat"] = _ask_float("Latitude, e.g. -48.876667 (Point Nemo)", weather["lat"])
-    weather["lon"] = _ask_float("Longitude, e.g. -123.393333 (Point Nemo)", weather["lon"])
-    print(f"{DIM}  Calendar events arrive from an iPhone shortcut posting to /calendar.{RESET}")
-    print(f"{DIM}  Ready made shortcuts: {SHORTCUTS_REPO}{RESET}")
+    # the template ships Point Nemo, showing that as the default helps nobody
+    untouched = weather["lat"] == _load_template()["dashboard"]["weather"]["lat"]
+    print(f"{DIM}  Coordinates of the place the weather is for, in decimal degrees.{RESET}")
+    weather["lat"] = _ask_float("Latitude", weather["lat"], show_default=not untouched)
+    weather["lon"] = _ask_float("Longitude", weather["lon"], show_default=not untouched)
 
 
 def _local_time():
@@ -410,26 +461,136 @@ def _restart_service():
     return 0
 
 
+def _load_template():
+    with open(CONFIG_TEMPLATE, encoding="utf-8") as handle:
+        return tomlkit.load(handle)
+
+
+def _flat_keys(node, prefix=""):
+    flat = {}
+    for key, value in node.items():
+        path = prefix + key
+        if hasattr(value, "items"):
+            flat.update(_flat_keys(value, path + "."))
+        else:
+            flat[path] = value
+    return flat
+
+
+def _optional_keys():
+    # optional settings sit in the template as a commented example, they are known but not missing
+    optional = set()
+    section  = ""
+    with open(CONFIG_TEMPLATE, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line.startswith("["):
+                section = line.strip("[]").strip()
+            commented = re.match(r"#\s*([A-Za-z0-9_]+)\s*=", line)
+            if commented:
+                optional.add(f"{section}.{commented.group(1)}")
+    return optional
+
+
+def _salvage_config(path):
+    # the file as a whole does not parse any more, most single lines still do
+    found   = {}
+    section = ""
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if line.startswith("["):
+                section = line.strip("[]").strip()
+                continue
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            try:
+                parsed = tomlkit.parse(line)
+            except Exception:
+                continue
+            for key, value in parsed.items():
+                found[f"{section}.{key}" if section else key] = value
+    return found
+
+
+def _restore(doc, values):
+    for path, value in values.items():
+        parts = path.split(".")
+        node  = doc
+        for part in parts[:-1]:
+            if part not in node:
+                node[part] = tomlkit.table()
+            node = node[part]
+        node[parts[-1]] = value
+    return len(values)
+
+
+def _offer_salvage():
+    found = _salvage_config(CONFIG)
+    if not found:
+        warn("Nothing readable in it, starting from the template.")
+        return None
+    print()
+    print(f"  {len(found)} settings survived:")
+    for path, value in found.items():
+        print(f"    {path}={value}")
+    print()
+    if not _ask_yes_no("Keep these settings?", True):
+        return None
+    return found
+
+
+def _check_drift(doc):
+    template = _flat_keys(_load_template())
+    have     = set(_flat_keys(doc))
+    for path in sorted(have - set(template) - _optional_keys()):
+        warn(f"{path} is not in the template, left as it is.")
+    missing = sorted(set(template) - have)
+    if not missing:
+        return
+    warn(f"config.toml is missing {len(missing)} settings from the template:")
+    for path in missing:
+        print(f"    {path}")
+    if not _ask_yes_no("Add them with their default values?", True):
+        return
+    added = _restore(doc, {path: template[path] for path in missing})
+    with open(CONFIG, "w", encoding="utf-8", newline="\n") as handle:
+        tomlkit.dump(doc, handle)
+    info(f"Added {added} settings to config.toml.")
+
+
 def _install(args):
     doc          = None
     env          = _read_env()
     env_wanted   = {}
+    env_existed  = os.path.exists(ENV)
     have_config  = os.path.exists(CONFIG)
     port         = 12832
     mac          = None
     panels       = {}
+    salvaged     = None
+    current      = None
+
+    if have_config:
+        try:
+            with open(CONFIG, encoding="utf-8") as handle:
+                current = tomlkit.load(handle)
+        except Exception as exc:
+            warn(f"config.toml is broken: {exc}")
+            salvaged    = _offer_salvage()
+            have_config = False
 
     if have_config and not args.reconfigure:
         info("config.toml is already there, left untouched. Use --reconfigure to change it.")
-        with open(CONFIG, encoding="utf-8") as handle:
-            port = tomlkit.load(handle).get("expert", {}).get("port", port)
+        port = current.get("expert", {}).get("port", port)
+        _check_drift(current)
     else:
-        source = CONFIG if have_config else CONFIG_TEMPLATE
-        with open(source, encoding="utf-8") as handle:
-            doc = tomlkit.load(handle)
+        doc = current if have_config else _load_template()
+        if salvaged:
+            info(f"Restored {_restore(doc, salvaged)} settings into a fresh config.")
 
         print()
-        mac = _pick_mac(doc["device"]["mac_address"] if have_config else None)
+        mac = _pick_mac(_normalize_mac(doc["device"]["mac_address"]))
         if mac:
             doc["device"]["mac_address"] = mac
         port = _ask_int("Port for the web ui and the api", doc["expert"]["port"])
@@ -442,7 +603,6 @@ def _install(args):
 
         panels["nowplaying"] = _ask_yes_no("Enable the now playing panel?", True)
         if panels["nowplaying"]:
-            print(f"{DIM}  Type skip at any of these to leave the panel off and move on.{RESET}")
             try:
                 env_wanted, complete = _ask_nowplaying(env, doc)
             except Skipped:
@@ -465,6 +625,10 @@ def _install(args):
     else:
         autostart = _ask_yes_no("Start on boot?", True)
 
+    env_new     = dict(env)
+    env_new.update({key: value for key, value in env_wanted.items() if value})
+    env_changed = env_new != env
+
     print()
     print("  Summary")
     if doc is not None:
@@ -474,7 +638,7 @@ def _install(args):
         for section, enabled in panels.items():
             print(f"    {section:<14}{'on' if enabled else 'off'}")
         print(f"    config      {CONFIG}")
-        if env_wanted:
+        if env_changed:
             print(f"    secrets     {ENV}")
     print(f"    autostart   {'yes' if autostart else 'no'}")
     print()
@@ -485,10 +649,9 @@ def _install(args):
         with open(CONFIG, "w", encoding="utf-8", newline="\n") as handle:
             tomlkit.dump(doc, handle)
         info(f"Wrote {os.path.basename(CONFIG)}.")
-    if env_wanted:
-        env.update({key: value for key, value in env_wanted.items() if value})
-        _write_env(env)
-        info("Wrote .env.")
+    if env_changed:
+        _write_env(env_new)
+        info(f"{'Updated' if env_existed else 'Wrote'} .env.")
 
     if autostart:
         autostart = _install_task() if IS_WINDOWS else _install_unit()
