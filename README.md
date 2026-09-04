@@ -25,8 +25,6 @@ playing, and what is on your calendar. You can also switch to panels manually.
 
 - Intelligent cycling for panels
 
-Switch panels by hand whenever you want, from the web app or your phone
-
 **Other features**
 
 - **Web application:** Control the display, watch it live and change settings
@@ -113,8 +111,8 @@ The Twin on a page of its own, made for a big screen like a second monitor.
 
 <img src=".github/assets/webui/WebUI-editor-clock-custom.png" height="300">
 
-You get there by enlarging the Twin on the Home tab,
-from *Settings -> Web*, or straight at `/preview`.
+You get there by enlarging the Twin on the Home tab, or
+from *Settings -> Web -> Twin Viewer & Editor*, or straight at `/preview`.
 
 - **Fullscreen**: nothing but the panel, as big as the screen allows
 - **Preview**: follow the live display or choose a specific panel
