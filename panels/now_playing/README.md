@@ -6,7 +6,7 @@ Whatever you are listening to right now, on the display.
 It follows your scrobbles, so it does not care which player
 or streaming service the music comes from.
 
-<img src="../../.github/assets/nowplaying_preview.gif" alt="Preview" width="512">
+<img src="../../.github/assets/panels/nowplaying/nowplaying_preview.gif" alt="Preview" width="512">
 
 # Legend
 

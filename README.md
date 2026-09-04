@@ -10,7 +10,7 @@ An intelligent display controller for a 128x32 iPixel Bluetooth Display.
 Four panels take turns on the display, picked Automatically; By time of day, whether music is
 playing, and what is on your calendar. You can also switch to panels manually.
 
-<img src=".github/assets/preview.gif" alt="Preview" width="512">
+<img src=".github/assets/panels/preview.gif" alt="Preview" width="512">
 
 ## Features
 
@@ -43,8 +43,8 @@ Switch panels by hand whenever you want, from the web app or your phone
 
 | Item | Required features | Example                                                                                                                                         |
 |---|---|-------------------------------------------------------------------------------------------------------------------------------------------------|
-| Display | 128x32 RGB LED matrix, BLE, [pypixelcolor](https://pypi.org/project/pypixelcolor/) protocol | <img src=".github/assets/hardware-display.png" width="180"><br>[iPixel 128x32 LED Matrix](https://de.aliexpress.com/item/1005009054780561.html) |
-| Controller | Python 3, Bluetooth | <img src=".github/assets/hardware-pi.png" width="180"><br>[Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/)  |
+| Display | 128x32 RGB LED matrix, BLE, [pypixelcolor](https://pypi.org/project/pypixelcolor/) protocol | <img src=".github/assets/hardware/hardware-display.png" width="180"><br>[iPixel 128x32 LED Matrix](https://de.aliexpress.com/item/1005009054780561.html) |
+| Controller | Python 3, Bluetooth | <img src=".github/assets/hardware/hardware-pi.png" width="180"><br>[Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/)  |
 
 Anything that runs Python and has Bluetooth works as the controller, a laptop or an old
 mini PC works too.
@@ -58,10 +58,10 @@ but you can always switch through panels manually.
 
 | Panel | What it shows                                                              | |
 |---|----------------------------------------------------------------------------|---|
-| [Clock](panels/clock/README.md) | 24h digital clock                                                          | <img src=".github/assets/clock.gif" width="384"> |
-| [Verse of Day](panels/verse_of_day/README.md) | daily bible verse                                                          | <img src=".github/assets/verse_preview.gif" width="384"> |
-| [Now Playing](panels/now_playing/README.md)\* | Your currently played song with cover art, BPM Visualizer and progress bar | <img src=".github/assets/nowplaying_preview.gif" width="384"> |
-| [Dashboard](panels/dashboard/README.md) | live weather and calendar events with travel countdowns                    | <img src=".github/assets/dashboard_preview.gif" width="384"> |
+| [Clock](panels/clock/README.md) | 24h digital clock                                                          | <img src=".github/assets/panels/clock/clock.gif" width="384"> |
+| [Verse of Day](panels/verse_of_day/README.md) | daily bible verse                                                          | <img src=".github/assets/panels/verse/verse_preview.gif" width="384"> |
+| [Now Playing](panels/now_playing/README.md)\* | Your currently played song with cover art, BPM Visualizer and progress bar | <img src=".github/assets/panels/nowplaying/nowplaying_preview.gif" width="384"> |
+| [Dashboard](panels/dashboard/README.md) | live weather and calendar events with travel countdowns                    | <img src=".github/assets/panels/dashboard/dashboard_preview.gif" width="384"> |
 
 \*Now Playing needs free API keys. See how to get them [here](panels/now_playing/README.md).
 
@@ -72,7 +72,7 @@ in the network at `http://<device-ip>:12832`.
 
 | Desktop                                                        | Mobile                                                        |
 |----------------------------------------------------------------|---------------------------------------------------------------|
-| <img src=".github/assets/WebUI-home-desktop.png" height="500"> | <img src=".github/assets/WebUI-home-mobile.png" height="500"> |
+| <img src=".github/assets/webui/WebUI-home-desktop.png" height="500"> | <img src=".github/assets/webui/WebUI-home-mobile.png" height="500"> |
 
 It serves as the remote control of the display:
 - power on/off
@@ -93,7 +93,7 @@ It sits on the Home tab of the Web App and follows whatever the real Display dis
 
 | Color Mode: Web                                                     | Color Mode: Pixel                                                                                                  |
 |---------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
-| <img src=".github/assets/WebUI-home-twin-web.png" height="200"><br>sleek and modern visualization of your display | <img src=".github/assets/WebUI-home-twin-pixel.png" height="200"><br>HD Version of your Display in accurate colors |
+| <img src=".github/assets/webui/WebUI-home-twin-web.png" height="200"><br>sleek and modern visualization of your display | <img src=".github/assets/webui/WebUI-home-twin-pixel.png" height="200"><br>HD Version of your Display in accurate colors |
 
 Color Modes are switchable per panel or globally
 
@@ -111,7 +111,7 @@ you can disable it in the Settings tab of the Web Application.
 
 The Twin on a page of its own, made for a big screen like a second monitor.
 
-<img src=".github/assets/WebUI-editor-clock-custom.png" height="300">
+<img src=".github/assets/webui/WebUI-editor-clock-custom.png" height="300">
 
 You get there by enlarging the Twin on the Home tab,
 from *Settings -> Web*, or straight at `/preview`.
@@ -123,7 +123,7 @@ from *Settings -> Web*, or straight at `/preview`.
 
 **Export Example:**
 
-<img src=".github/assets/Export-Twin-Editor-CharliXCX-Camera.svg" width="570">
+<img src=".github/assets/export/Export-Twin-Editor-CharliXCX-Camera.svg" width="570">
 
 Supported Export Formats:
 - PNG

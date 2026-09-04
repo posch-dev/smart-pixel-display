@@ -4,7 +4,7 @@
 
 Clock, live weather, and upcoming calendar events with travel-time warnings on one screen.
 
-<img src="../../.github/assets/dashboard_preview.gif" alt="Preview" width="512">
+<img src="../../.github/assets/panels/dashboard/dashboard_preview.gif" alt="Preview" width="512">
 
 # Legend
 
@@ -32,26 +32,26 @@ events at all, and whether those events carry a departure time.
 
 ### Clock and weather only (no events)
 
-<img src="../../.github/assets/dashboard_weather_snow_f.png" alt="snow_f" width="512">
+<img src="../../.github/assets/panels/dashboard/dashboard_weather_snow_f.png" alt="snow_f" width="512">
 
 Switch between °C and °F in the web app under **Panels -> Dashboard -> Weather**, or with
 `units = "metric"` and `units = "imperial"` under `[dashboard.weather]` in `config.toml`.
 
 ### Event without travel time
 
-<img src="../../.github/assets/dashboard_mode2.png" alt="Mode 2 - Gym, no travel" width="512">
+<img src="../../.github/assets/panels/dashboard/dashboard_mode2.png" alt="Mode 2 - Gym, no travel" width="512">
 
 ### Event with travel time (countdown to departure)
 
 | | |
 |---|---|
-| 45 min to leave, Casino | <img src="../../.github/assets/dashboard_mode3.png" alt="Mode 3 - 45 min" width="384"> |
-| Far out (90+ min), Night Shift | <img src="../../.github/assets/dashboard_mode3_far.png" alt="Mode 3 - 90 min" width="384"> |
+| 45 min to leave, Casino | <img src="../../.github/assets/panels/dashboard/dashboard_mode3.png" alt="Mode 3 - 45 min" width="384"> |
+| Far out (90+ min), Night Shift | <img src="../../.github/assets/panels/dashboard/dashboard_mode3_far.png" alt="Mode 3 - 90 min" width="384"> |
 
 When the departure time has passed, the countdown switches to "NOW!" followed by
 how many minutes late you are. The "NOW!" text alternates between purple and orange every second.
 
-<img src="../../.github/assets/dashboard_mode3_late.gif" alt="Mode 3 - LEAVE NOW" width="512">
+<img src="../../.github/assets/panels/dashboard/dashboard_mode3_late.gif" alt="Mode 3 - LEAVE NOW" width="512">
 
 ## Setup
 

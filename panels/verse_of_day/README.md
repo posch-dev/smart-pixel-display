@@ -6,11 +6,11 @@ There is one bible verse per day, and the panel shows it at random times through
 day. How often it comes up is a matter of chance, you set the probability and it rolls
 for it in its time windows.
 
-<img src="../../.github/assets/verse_preview.gif" alt="Preview" width="512">
+<img src="../../.github/assets/panels/verse/verse_preview.gif" alt="Preview" width="512">
 
 | Short book name                      | Medium book name             | Long book name |
 |--------------------------------------|-------------------------------------------------------|---|
-| <img src="../../.github/assets/verse_short.png" alt="JOHN 5:4" width="256"> | <img src="../../.github/assets/verse_medium.png" alt="ROMANS 8:18" width="256"> | <img src="../../.github/assets/verse_long.png" alt="REVELATION 22:21" width="256"> |
+| <img src="../../.github/assets/panels/verse/verse_short.png" alt="JOHN 5:4" width="256"> | <img src="../../.github/assets/panels/verse/verse_medium.png" alt="ROMANS 8:18" width="256"> | <img src="../../.github/assets/panels/verse/verse_long.png" alt="REVELATION 22:21" width="256"> |
 
 Book names that are too long for the line get cut off, like REVELATION above.
 
