@@ -221,9 +221,13 @@ def _ask_env(env, key, prompt, secret=False, optional=False):
     return answer
 
 
+def _has_keys(env, keys):
+    return any(env.get(key) for key in keys)
+
+
 def _detect_scrobbler(env):
-    has_lastfm  = any(env.get(key) for key in LASTFM_KEYS)
-    has_librefm = any(env.get(key) for key in LIBREFM_KEYS)
+    has_lastfm  = _has_keys(env, LASTFM_KEYS)
+    has_librefm = _has_keys(env, LIBREFM_KEYS)
     if has_lastfm == has_librefm:
         return None
     return "lastfm" if has_lastfm else "librefm"
@@ -244,15 +248,18 @@ def _ask_nowplaying(env, doc):
     print(f"{DIM}  Type skip at any of these to leave now playing off and move on.{RESET}")
     wanted = {}
     if scrobbler == "lastfm":
-        print(f"{DIM}  Create the keys first at https://www.last.fm/api/account/create{RESET}")
+        # where to get them only helps as long as there are none
+        if not _has_keys(env, LASTFM_KEYS):
+            print(f"{DIM}  Create the keys first at https://www.last.fm/api/account/create{RESET}")
         wanted["LASTFM_API_KEY"]  = _ask_env(env, "LASTFM_API_KEY", "last.fm API key")
         wanted["LASTFM_SECRET"]   = _ask_env(env, "LASTFM_SECRET", "last.fm shared secret")
         wanted["LASTFM_USERNAME"] = _ask_env(env, "LASTFM_USERNAME", "last.fm username")
     else:
         wanted["LIBREFM_USERNAME"] = _ask_env(env, "LIBREFM_USERNAME", "libre.fm username")
         wanted["LIBREFM_PASSWORD"] = _ask_env(env, "LIBREFM_PASSWORD", "libre.fm password", secret=True)
-    print(f"{DIM}  Optional, the bpm readout stays empty without it.{RESET}")
-    print(f"{DIM}  Key from https://getsongbpm.com/api{RESET}")
+    if not env.get("GETSONGBPM_API_KEY"):
+        print(f"{DIM}  Optional, the bpm readout stays empty without it.{RESET}")
+        print(f"{DIM}  Key from https://getsongbpm.com/api{RESET}")
     wanted["GETSONGBPM_API_KEY"] = _ask_env(env, "GETSONGBPM_API_KEY", "getsongbpm API key", optional=True)
     doc["nowplaying"]["scrobbler"] = scrobbler
     return wanted, all(wanted[key] for key in wanted if key != "GETSONGBPM_API_KEY")
