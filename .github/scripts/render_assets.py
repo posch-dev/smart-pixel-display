@@ -13,7 +13,25 @@ sys.path.insert(0, os.path.join(_root, "panels", "now_playing"))
 OUT   = os.path.join(_root, ".github", "assets")
 SCALE = 4
 
-os.makedirs(OUT, exist_ok=True)
+CLOCK_DIR  = "panels/clock"
+VERSE_DIR  = "panels/verse"
+NP_DIR     = "panels/nowplaying"
+DASH_DIR   = "panels/dashboard"
+PANELS_DIR = "panels"
+UNUSED_DIR = "unused"
+
+DASH_WEATHER_SHOWN = {"partly", "below_zero", "snow_f"}
+
+
+def _out_path(name: str) -> str:
+    path = os.path.join(OUT, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
+
+# the weather renders nobody links to are kept out of the panel folder
+def _weather_name(label: str) -> str:
+    folder = DASH_DIR if label in DASH_WEATHER_SHOWN else UNUSED_DIR
+    return f"{folder}/dashboard_weather_{label}.png"
 
 
 def _hex_to_img(hex_str: str) -> Image.Image:
@@ -23,7 +41,7 @@ def _upscale(img: Image.Image) -> Image.Image:
     return img.resize((img.width * SCALE, img.height * SCALE), Image.NEAREST)
 
 def _save_png(hex_str: str, name: str) -> None:
-    path = os.path.join(OUT, name)
+    path = _out_path(name)
     _upscale(_hex_to_img(hex_str)).rotate(180).save(path)
     print(f"  {name}")
 
@@ -34,7 +52,7 @@ def _frames_to_gif(frames: list[Image.Image], name: str, duration) -> None:
     buf = io.BytesIO()
     quantized[0].save(buf, format="GIF", save_all=True, append_images=quantized[1:],
                       loop=0, duration=duration, optimize=False)
-    path = os.path.join(OUT, name)
+    path = _out_path(name)
     with open(path, "wb") as f:
         f.write(buf.getvalue())
     print(f"  {name}  ({len(buf.getvalue()) // 1024} KB, {len(frames)} frames)")
@@ -53,7 +71,7 @@ CLOCK_TIMES = [
     ("17", "49"), ("23", "18"), ("20", "15"), ("17", "38"),
 ]
 clock_frames = [_hex_to_img(clock_render(hh, mm, True)).rotate(180) for hh, mm in CLOCK_TIMES]
-_frames_to_gif(clock_frames, "clock.gif", 5000)
+_frames_to_gif(clock_frames, f"{CLOCK_DIR}/clock.gif", 5000)
 
 
 print("\nVerse of Day:")
@@ -65,7 +83,7 @@ for label, ref in [
     ("medium", "ROMANS 8:18"),
     ("long",   "REVELATION 22:21"),
 ]:
-    _save_png(render_reference(ref, W, H), f"verse_{label}.png")
+    _save_png(render_reference(ref, W, H), f"{VERSE_DIR}/verse_{label}.png")
 
 
 print("\nDashboard:")
@@ -105,24 +123,24 @@ STANDARD_CONDITIONS = ["sunny", "rain", "snow", "storm", "fog", "cloudy", "partl
 print("  Mode 1 - metric:")
 calendar_store.clear_events()
 for label in STANDARD_CONDITIONS:
-    _save_png(dash_render(WEATHER_TIMES[label], WEATHERS_METRIC[label], True), f"dashboard_weather_{label}.png")
+    _save_png(dash_render(WEATHER_TIMES[label], WEATHERS_METRIC[label], True), _weather_name(label))
 
 print("  Mode 1 - metric, low below zero:")
 _save_png(
     dash_render(datetime(2026, 3, 15, 10, 0, tzinfo=LOCAL_TZ), WEATHERS_METRIC["low_neg"], True),
-    "dashboard_weather_low_neg.png",
+    _weather_name("low_neg"),
 )
 
 print("  Mode 1 - metric, below zero now:")
 _save_png(
     dash_render(datetime(2026, 1, 20, 8, 0, tzinfo=LOCAL_TZ), WEATHERS_METRIC["below_zero"], True),
-    "dashboard_weather_below_zero.png",
+    _weather_name("below_zero"),
 )
 
 print("  Mode 1 - metric, all negative:")
 _save_png(
     dash_render(datetime(2026, 1, 28, 7, 0, tzinfo=LOCAL_TZ), WEATHERS_METRIC["all_neg"], True),
-    "dashboard_weather_all_neg.png",
+    _weather_name("all_neg"),
 )
 
 _orig_cfg_get = _cfg.get
@@ -136,11 +154,11 @@ print("  Mode 1 - imperial:")
 _cfg.get = _imperial_get
 _save_png(
     dash_render(datetime(2026, 6, 14, 15, 30, tzinfo=LOCAL_TZ), WEATHERS_METRIC["sunny"], True),
-    "dashboard_weather_sunny_f.png",
+    _weather_name("sunny_f"),
 )
 _save_png(
     dash_render(datetime(2026, 1, 5, 7, 45, tzinfo=LOCAL_TZ), WEATHERS_METRIC["below_zero"], True),
-    "dashboard_weather_snow_f.png",
+    _weather_name("snow_f"),
 )
 _cfg.get = _orig_cfg_get
 
@@ -148,14 +166,14 @@ print("  Mode 2:")
 _save_png(
     dash_render(datetime(2026, 1, 15, 8, 0, tzinfo=LOCAL_TZ), WEATHERS_METRIC["cloudy"], True,
                 cal_override=(None, None, "Gym", "09:00", "10:30")),
-    "dashboard_mode2.png",
+    f"{DASH_DIR}/dashboard_mode2.png",
 )
 
 print("  Mode 3 - 45 min:")
 _save_png(
     dash_render(datetime(2026, 9, 17, 18, 45, tzinfo=LOCAL_TZ), WEATHERS_METRIC["partly"], True,
                 cal_override=(45, "19:30", "Casino")),
-    "dashboard_mode3.png",
+    f"{DASH_DIR}/dashboard_mode3.png",
 )
 
 print("  Mode 3 - leave now (GIF):")
@@ -167,13 +185,13 @@ frame_orange = _hex_to_img(
     dash_render(datetime(2026, 11, 28, 21, 30, tzinfo=LOCAL_TZ), WEATHERS_METRIC["cloudy"], False,
                 cal_override=(-12, "", "Saufen"), now_color=C_ORANGE)
 ).rotate(180)
-_frames_to_gif([frame_purple, frame_orange], "dashboard_mode3_late.gif", 500)
+_frames_to_gif([frame_purple, frame_orange], f"{DASH_DIR}/dashboard_mode3_late.gif", 500)
 
 print("  Mode 3 - far out:")
 _save_png(
     dash_render(datetime(2026, 8, 22, 14, 32, tzinfo=LOCAL_TZ), WEATHERS_METRIC["sunny"], True,
                 cal_override=(90, "16:02", "Night Shift")),
-    "dashboard_mode3_far.png",
+    f"{DASH_DIR}/dashboard_mode3_far.png",
 )
 
 
@@ -302,7 +320,7 @@ for song in SONGS:
     cover = _fetch_cover(song["query"])
     state = {**song["state"], "cover": cover}
     gif_bytes = generate_gif(state)
-    _scale_gif_bytes(gif_bytes, song["file"])
+    _scale_gif_bytes(gif_bytes, f"{NP_DIR}/{song['file']}")
 
 
 def _asset_frames(name: str, target_ms: int = 5000):
@@ -337,34 +355,35 @@ def _merge_assets(sources: list[str], name: str, hold_ms: int = 5000):
     buf = io.BytesIO()
     quantized[0].save(buf, format="GIF", save_all=True, append_images=quantized[1:],
                       loop=0, duration=all_d, optimize=False)
-    path = os.path.join(OUT, name)
+    path = _out_path(name)
     with open(path, "wb") as fh:
         fh.write(buf.getvalue())
     print(f"  {name}  ({len(buf.getvalue()) // 1024} KB, {len(all_f)} frames)")
 
 
 print("\nVerse Preview GIF:")
-_merge_assets(["verse_short.png", "verse_medium.png", "verse_long.png"], "verse_preview.gif")
+_merge_assets([f"{VERSE_DIR}/verse_short.png", f"{VERSE_DIR}/verse_medium.png",
+               f"{VERSE_DIR}/verse_long.png"], f"{VERSE_DIR}/verse_preview.gif")
 
 print("\nDashboard Preview GIF:")
 _merge_assets([
-    "dashboard_weather_partly.png",
-    "dashboard_weather_below_zero.png",
-    "dashboard_mode2.png",
-    "dashboard_mode3.png",
-    "dashboard_mode3_late.gif",
-], "dashboard_preview.gif")
+    _weather_name("partly"),
+    _weather_name("below_zero"),
+    f"{DASH_DIR}/dashboard_mode2.png",
+    f"{DASH_DIR}/dashboard_mode3.png",
+    f"{DASH_DIR}/dashboard_mode3_late.gif",
+], f"{DASH_DIR}/dashboard_preview.gif")
 
 print("\nNow Playing Preview GIF:")
-_merge_assets([s["file"] for s in SONGS], "nowplaying_preview.gif")
+_merge_assets([f"{NP_DIR}/{s['file']}" for s in SONGS], f"{NP_DIR}/nowplaying_preview.gif")
 
 print("\nPreview GIF:")
 _merge_assets([
-    "clock.gif",
-    "verse_preview.gif",
-    "nowplaying_preview.gif",
-    "dashboard_preview.gif",
-], "preview.gif")
+    f"{CLOCK_DIR}/clock.gif",
+    f"{VERSE_DIR}/verse_preview.gif",
+    f"{NP_DIR}/nowplaying_preview.gif",
+    f"{DASH_DIR}/dashboard_preview.gif",
+], f"{PANELS_DIR}/preview.gif")
 
 
 print("\nDone.")
