@@ -139,9 +139,9 @@ Supports `on_enter` and `on_exit` webhooks.
 ## Running standalone
 
 ```bash
-python panels/dashboard/main.py
+./.venv/bin/python panels/dashboard/main.py
 # or cycle through all display states with test data:
-python panels/dashboard/display.py --test
+./.venv/bin/python panels/dashboard/display.py --test
 ```
 
 ---

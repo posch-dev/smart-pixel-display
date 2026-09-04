@@ -42,7 +42,7 @@ Supports `on_enter` and `on_exit` webhooks.
 ## Running standalone
 
 ```bash
-python panels/verse_of_day/main.py
+./.venv/bin/python panels/verse_of_day/main.py
 ```
 
 ---

@@ -218,10 +218,11 @@ By hand:
 ./.venv/bin/python startup.py
 ```
 
-You can also run a single panel standalone:
+You can also run a single panel standalone, from the repo directory, so it finds
+the dependencies in the `.venv`:
 
 ```bash
-python panels/<panel>/main.py
+./.venv/bin/python panels/<panel>/main.py
 ```
 
 ### 4. Updating

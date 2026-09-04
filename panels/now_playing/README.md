@@ -135,7 +135,7 @@ Full-brightness variants are the same hue but at max value, for things like WLED
 ## Running standalone
 
 ```bash
-python panels/now_playing/main.py
+./.venv/bin/python panels/now_playing/main.py
 ```
 
 ---

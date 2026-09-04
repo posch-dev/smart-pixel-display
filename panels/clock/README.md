@@ -30,7 +30,7 @@ Supports `on_enter` and `on_exit` webhooks.
 ## Running standalone
 
 ```bash
-python panels/clock/main.py
+./.venv/bin/python panels/clock/main.py
 ```
 
 ---
