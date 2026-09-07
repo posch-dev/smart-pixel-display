@@ -6,10 +6,10 @@ const MODULE_PREFIX = { clock:'cl', verse_of_day:'v', nowplaying:'np', dashboard
 const TRIG_ICONS = { clock:'#ico-clock', verse_of_day:'#ico-cross', nowplaying:'#ico-music', dashboard:'#ico-calendar' };
 const PANEL_KEY = { clock:'clock', verse_of_day:'verse', nowplaying:'np', dashboard:'dash' };
 const PANEL_DESC = {
-  clock:        'Time and date, with a blinking colon',
-  verse_of_day: 'A bible verse reference, refreshed daily',
-  nowplaying:   'Track, artist and cover art while music plays',
-  dashboard:    'Weather and the next calendar entries',
+  clock:        'Digital Clock',
+  verse_of_day: 'Daily Bible Verse',
+  nowplaying:   'Song Cover, Song Infos and Beat Visualizer',
+  dashboard:    'Weather, Time and Calendar',
 };
 
 let cfg = {};
