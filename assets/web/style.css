@@ -453,8 +453,19 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   align-items: center; justify-content: center; text-align: center; padding: 24px;
   font-size: 12px; color: var(--muted); background: var(--input);
 }
-/* leaflet paints its own light chrome, the popup panes stay out of the theme */
+/* leaflet ships its own light chrome, every visible piece of it is repainted */
 #loc-map .leaflet-container { background: var(--input); font: inherit; }
+#loc-map .leaflet-bar { border-color: var(--border); box-shadow: none; }
+#loc-map .leaflet-bar a {
+  background: var(--card); color: var(--text); border-bottom-color: var(--border);
+}
+#loc-map .leaflet-bar a:hover { background: var(--input); color: var(--accent); }
+#loc-map .leaflet-bar a.leaflet-disabled { background: var(--surface); color: var(--muted); }
+#loc-map .leaflet-control-attribution {
+  background: var(--card); color: var(--muted); font-size: 10px;
+}
+#loc-map .leaflet-control-attribution a { color: var(--accent); }
+.loc-pin svg { width: 26px; height: 26px; fill: var(--accent); display: block; }
 .loc-foot {
   padding: 12px 16px; border-top: 1px solid var(--border);
   display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;

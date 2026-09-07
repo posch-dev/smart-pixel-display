@@ -117,6 +117,7 @@ function setPreviewMode(mode) {
 
 function setThemeMode(mode) {
   document.documentElement.dataset.theme = mode;
+  applyMapTheme();
   document.getElementById('theme-dark').classList.toggle('on', mode === 'dark');
   document.getElementById('theme-light').classList.toggle('on', mode === 'light');
   setCookie('spd_theme', mode);
@@ -939,12 +940,18 @@ function saveWeather() {
 
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
-const TILE_URL    = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const ESRI_CANVAS = 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas';
+const TILE_URLS   = {
+  light: `${ESRI_CANVAS}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  dark:  `${ESRI_CANVAS}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+};
+const TILE_ATTRIB = 'Tiles &copy; <a href="https://www.esri.com">Esri</a>, HERE, Garmin,'
+                  + ' &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 // leaflet's own prefix carries a flag, ours carries the credit and nothing else
 const LEAFLET_PREFIX = '<a href="https://leafletjs.com" title="A JavaScript library for interactive maps">Leaflet</a>';
 
 let _locMap    = null;
+let _locTiles  = null;
 let _locMarker = null;
 let _locPick   = null;
 let _locSeq    = 0;
@@ -964,9 +971,10 @@ function openLocationPicker() {
   document.getElementById('loc-picked').classList.add('empty');
   if (!_locMap) {
     _locMap = L.map('loc-map', { attributionControl: true }).setView([lat, lon], 9);
-    L.tileLayer(TILE_URL, { maxZoom: 18, attribution: TILE_ATTRIB })
-     .on('tileerror', () => document.getElementById('loc-offline').style.display = 'flex')
-     .addTo(_locMap);
+    _locTiles = L.tileLayer(TILE_URLS[mapTheme()], {
+      maxZoom: 18, maxNativeZoom: 16, attribution: TILE_ATTRIB,
+    }).on('tileerror', () => document.getElementById('loc-offline').style.display = 'flex')
+      .addTo(_locMap);
     _locMap.attributionControl.setPrefix(LEAFLET_PREFIX);
     _locMap.on('click', e => pickAt(e.latlng.lat, e.latlng.lng));
     document.getElementById('loc-results').addEventListener(
@@ -979,6 +987,14 @@ function openLocationPicker() {
   setTimeout(() => _locMap.invalidateSize(), 0);
 }
 
+function mapTheme() {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+
+function applyMapTheme() {
+  if (_locTiles) _locTiles.setUrl(TILE_URLS[mapTheme()]);
+}
+
 function closeLocationPicker() {
   _locSeq++;
   document.getElementById('loc-overlay').classList.remove('show');
@@ -988,7 +1004,11 @@ function placeMarker(lat, lon) {
   if (_locMarker) {
     _locMarker.setLatLng([lat, lon]);
   } else {
-    _locMarker = L.marker([lat, lon], { draggable: true }).addTo(_locMap);
+    const icon = L.divIcon({
+      className: 'loc-pin', iconSize: [26, 26], iconAnchor: [13, 26],
+      html: '<svg viewBox="0 0 24 24"><use href="#ico-pin"/></svg>',
+    });
+    _locMarker = L.marker([lat, lon], { draggable: true, icon }).addTo(_locMap);
     _locMarker.on('dragend', () => {
       const p = _locMarker.getLatLng();
       pickAt(p.lat, p.lng);

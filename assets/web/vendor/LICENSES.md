@@ -86,9 +86,10 @@ SOFTWARE.
 
 ## Leaflet 1.9.4, Volodymyr Agafonkin
 
-Vendored as `leaflet/`, script, stylesheet and the marker images the stylesheet
-points at. Map tiles come from OpenStreetMap at runtime and are credited in the
-attribution control on the map itself.
+Vendored as `leaflet/`, script, stylesheet and the layer images the stylesheet
+points at. The marker is drawn from the icon sprite instead. Map tiles come from
+Esri at runtime and are credited, with their data partners, in the attribution
+control on the map itself.
 
 ```
 BSD 2-Clause License
