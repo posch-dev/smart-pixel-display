@@ -479,11 +479,18 @@ function _applyNpAccents() {
 
 // a frozen page is a real still: no reading is carried forward
 let _bpFrozen = false;
+let _bpFrozenData = null;
 
 function setBlueprintFrozen(on) {
   _bpFrozen = on;
+  _bpFrozenData = on ? _bpLastData : null;
   document.documentElement.dataset.frozen = on ? 'on' : '';
   _paintPlayhead();
+}
+
+// what stands on the frozen page, so an export writes that and not the song since
+function blueprintFrozenData() {
+  return _bpFrozenData;
 }
 
 function blueprintPlayhead() {

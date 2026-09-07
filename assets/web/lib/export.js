@@ -314,7 +314,7 @@ async function openExport() {
   document.getElementById('ex-panel').textContent = EX_LABELS[_exMode] || 'Export';
   document.getElementById('ex-what').textContent = '';
   document.getElementById('ex-overlay').classList.add('show');
-  const data = await fetch('/home').then(r => r.json());
+  const data = blueprintFrozenData() || await fetch('/home').then(r => r.json());
   _exScene = await exScene(_exMode, data);
   document.getElementById('ex-what').textContent = _exSubject(_exMode, _exScene);
   _exPaint();
@@ -947,7 +947,8 @@ async function runExport() {
   btn.disabled = true;
   btn.textContent = 'Rendering';
   try {
-    const scene = _exScene || await exScene(_exMode, await fetch('/home').then(r => r.json()));
+    const scene = _exScene
+      || await exScene(_exMode, blueprintFrozenData() || await fetch('/home').then(r => r.json()));
     // one place decides whether anything moves, the head is placed when nothing does
     const anim = _exIsVideo(fmt) || (fmt !== 'png' && _exAnimOn());
     scene.lapse = _exLapseOn(fmt) ? _exLapsePlan() : null;
