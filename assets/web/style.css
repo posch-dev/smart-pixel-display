@@ -176,6 +176,20 @@ header {
 .panel-tabs.visible { display: flex; }
 .tab-bar, .panel-tabs { justify-content: safe center; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .tab-bar::-webkit-scrollbar, .panel-tabs::-webkit-scrollbar { display: none; }
+/* without a scrollbar a bar that ends flush looks like the whole list, so the side
+   that still has tabs behind it frays out */
+.tab-bar.can-l, .panel-tabs.can-l {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 36px);
+          mask-image: linear-gradient(90deg, transparent 0, #000 36px);
+}
+.tab-bar.can-r, .panel-tabs.can-r {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+}
+.tab-bar.can-l.can-r, .panel-tabs.can-l.can-r {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 36px, #000 calc(100% - 36px), transparent);
+          mask-image: linear-gradient(90deg, transparent 0, #000 36px, #000 calc(100% - 36px), transparent);
+}
 .panel-tab-btn {
   padding: 13px 14px; border: none; background: none; cursor: pointer;
   color: var(--muted); font-size: 12px; font-weight: 600;

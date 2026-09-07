@@ -192,6 +192,23 @@ function buildPanelTabs() {
   const keys = enabled.map(m => PANEL_KEY[m]);
   const target = keys.includes(current) ? current : keys[0];
   if (target) showPanel(target, bar.querySelector(`.panel-tab-btn[data-panel="${target}"]`));
+  markScrollEdges(bar);
+}
+
+function markScrollEdges(bar) {
+  if (!bar) return;
+  const max = bar.scrollWidth - bar.clientWidth;
+  bar.classList.toggle('can-l', max > 1 && bar.scrollLeft > 1);
+  bar.classList.toggle('can-r', max > 1 && bar.scrollLeft < max - 1);
+}
+
+// a rebuilt bar keeps its listener, the element is the same one
+function initScrollEdges() {
+  document.querySelectorAll('.tab-bar, .panel-tabs').forEach(bar => {
+    bar.addEventListener('scroll', () => markScrollEdges(bar), { passive: true });
+    new ResizeObserver(() => markScrollEdges(bar)).observe(bar);
+    markScrollEdges(bar);
+  });
 }
 
 function buildPanelIcons() {
@@ -1261,6 +1278,7 @@ async function init() {
     refreshAllWebhookCards();
     initMacFields();
     initAppearance();
+    initScrollEdges();
     measureChrome();
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBlueprintFull(); });
     new ResizeObserver(measureChrome).observe(document.querySelector('header'));
