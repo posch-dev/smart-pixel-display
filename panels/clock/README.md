@@ -5,7 +5,7 @@
 Full-screen 24h digital clock. The colon blink time is adjustable through
 the settings in the Web Application or in the `config.toml` file.
 
-<img src="../../.github/assets/panels/clock/clock.gif" alt="Clock cycling through 7 times" width="512">
+<img src="../../.github/assets/panels/clock/clock.png" alt="Clock cycling through 7 times" width="512">
 
 
 ## Configuration

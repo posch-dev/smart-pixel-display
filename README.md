@@ -10,7 +10,7 @@ An intelligent display controller for a 128x32 iPixel Bluetooth Display.
 Four panels take turns on the display, picked Automatically; By time of day, whether music is
 playing, and what is on your calendar. You can also switch to panels manually.
 
-<img src=".github/assets/panels/preview.gif" alt="Preview" width="512">
+<img src=".github/assets/panels/PreviewL.webp" alt="The display cycling through its panels" width="512">
 
 ## Features
 
