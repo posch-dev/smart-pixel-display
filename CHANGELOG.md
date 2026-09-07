@@ -23,6 +23,7 @@ All notable changes to smart pixel display. Newest first.
 - Timezone: The dashboard reads the clock of the machine it runs on instead of a hardcoded Europe/Vienna, on Linux and on Windows alike. Set the zone with your OS, `timedatectl set-timezone` on a Pi, and the installer prints back what it found.
 - Panel order: Drag the panels around in the enable card to set their priority.
 - Dashboard API: The web UI asks the Pi what the dashboard would show at any minute of the day, so nobody has to write that maths a second time in JavaScript.
+- Location picker: The weather stops asking for decimal degrees. Name a place or drop a pin on a map and the web UI works out the coordinates for you, the installer takes either form in one question. The map wears the theme and the accent colour like the rest of the UI.
 
 ### Changed
 
@@ -32,11 +33,16 @@ All notable changes to smart pixel display. Newest first.
 - Config location: `config.toml` sits in the repo root, stays out of git, and everything the web UI cannot reach lives in an `[expert]` block at the bottom.
 - Default port: The web UI and the API listen on 12832 unless you say otherwise.
 - Name: The project is smart pixel display now, not smart pixel dashboard. The systemd unit is `smartpixeldisplay.service` and the Windows task is SmartPixelDisplay; the installer removes the old ones on the way past. The dashboard panel keeps its own name.
+- Weather config: `location` holds the name of the place you picked instead of the old wttr override, and `location_mode` remembers which of the two inputs the web UI shows. Coordinates are what gets stored either way, so nothing is looked up again once it is set.
+- Labels: The panel descriptions and the lines under the settings say what a thing is instead of explaining it at length.
 
 ### Fixed
 
 - Brightness on a panel switch: Switching panels could leave the display sitting at the old panel's brightness. The switch cancelled whatever was still being sent, and the brightness command went down with it, so the new panel drew at the wrong level until something else set it.
 - Environment file: The bpm cache looked for a `.env` beside its own module, where there never was one, so the getsongbpm key went unread and the bpm readout stayed empty. It takes the one in the repo root.
+- Panel nav on a phone: The nav row scrolls, but with its scrollbar hidden a row that happened to end flush with the screen edge looked like the whole list. The side that still has panels behind it frays out now.
+- Freeze: Freezing the twin held the picture but not the reading behind it. Freeze during a song, wait for the next one, export, and the file came out with the wrong song on it. A still is a still now, for all four panels.
+- Album in exports: The album name sits at the end of its box in the twin and came out at the front of it in every exported file. It lands where the row shows it.
 
 ### Removed
 
