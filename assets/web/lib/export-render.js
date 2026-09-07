@@ -345,10 +345,14 @@ function _rNowPlaying(scene, t, pal, animate, decl) {
   ops.push(clip(mx, y, artW, rowH, rScrollAt(aPlan, t, cycle),
     [text(0, rowBase, scene.artist, artSize, pal.artist, {width: aPlan.textW})],
     _rScrollAnim(aPlan, cycle, decling)));
-  if (!noAlbum)
+  // the album sits at the end of its box the way the row does it, and only starts at
+  // the front when it is too long to fit and has to travel
+  if (!noAlbum) {
+    const albX = Math.max(0, albW - lPlan.textW);
     ops.push(clip(mx + mw - albW, y, albW, rowH, rScrollAt(lPlan, t, cycle),
-      [text(0, rowBase, scene.album, albSize, pal.album, {width: lPlan.textW})],
+      [text(albX, rowBase, scene.album, albSize, pal.album, {width: lPlan.textW})],
       _rScrollAnim(lPlan, cycle, decling)));
+  }
   y += rowH + barTop;
 
   const sweep = animate && decl && scene.sweep;
