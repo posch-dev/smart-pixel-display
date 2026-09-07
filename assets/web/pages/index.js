@@ -784,8 +784,8 @@ function populate() {
   document.getElementById('w_u_imperial').classList.toggle('on', units === 'imperial');
   setField('w_lat',      w.lat ?? '');
   setField('w_lon',      w.lon ?? '');
-  setField('w_location', w.location ?? '');
-  document.getElementById('w_location_row').style.display = provider === 'wttr' ? '' : 'none';
+  setLocationName(w.location ?? '');
+  paintLocationMode(w.location_mode === 'city' ? 'city' : 'coords');
 }
 
 function _reconcileTriggerState() {
@@ -893,24 +893,246 @@ function setUnits(units) {
   saveWeather();
 }
 function onWeatherProviderChange() {
-  const provider = document.getElementById('w_provider').value;
-  document.getElementById('w_location_row').style.display = provider === 'wttr' ? '' : 'none';
+  saveWeather();
+}
+let _locationName = '';
+
+function setLocationName(name) {
+  _locationName = name;
+  const el = document.getElementById('w_location');
+  el.textContent = name || 'Not set';
+  el.classList.toggle('unset', !name);
+}
+
+function locationMode() {
+  return document.getElementById('w_m_city').classList.contains('on') ? 'city' : 'coords';
+}
+function paintLocationMode(mode) {
+  document.getElementById('w_m_coords').classList.toggle('on', mode === 'coords');
+  document.getElementById('w_m_city').classList.toggle('on', mode === 'city');
+  document.getElementById('w_coords_row').style.display   = mode === 'coords' ? '' : 'none';
+  document.getElementById('w_location_row').style.display = mode === 'city'   ? '' : 'none';
+  const lat = document.getElementById('w_lat').value.trim();
+  const lon = document.getElementById('w_lon').value.trim();
+  document.getElementById('w_location_coords').textContent = lat && lon ? `${lat}, ${lon}` : '';
+}
+function setLocationMode(mode) {
+  paintLocationMode(mode);
   saveWeather();
 }
 function saveWeather() {
   const units = document.getElementById('w_u_imperial').classList.contains('on') ? 'imperial' : 'metric';
   const weather = {
-    provider: document.getElementById('w_provider').value,
-    units:    units,
+    provider:      document.getElementById('w_provider').value,
+    units:         units,
+    location_mode: locationMode(),
   };
   // an empty field leaves its key out, toml has no null to store
   const lat      = document.getElementById('w_lat').value.trim();
   const lon      = document.getElementById('w_lon').value.trim();
-  const location = document.getElementById('w_location').value.trim();
   if (lat)      weather.lat      = +lat;
   if (lon)      weather.lon      = +lon;
-  if (location) weather.location = location;
+  weather.location = _locationName;
+  paintLocationMode(weather.location_mode);
   save('dashboard', 'weather', weather);
+}
+
+const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+const REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
+const TILE_URL    = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+// leaflet's own prefix carries a flag, ours carries the credit and nothing else
+const LEAFLET_PREFIX = '<a href="https://leafletjs.com" title="A JavaScript library for interactive maps">Leaflet</a>';
+
+let _locMap    = null;
+let _locMarker = null;
+let _locPick   = null;
+let _locSeq    = 0;
+
+const coord = n => (+n).toFixed(4);
+
+function openLocationPicker() {
+  const overlay = document.getElementById('loc-overlay');
+  overlay.classList.add('show');
+  const lat = +document.getElementById('w_lat').value || 0;
+  const lon = +document.getElementById('w_lon').value || 0;
+  _locPick = null;
+  _locSeq++;
+  clearLocResults();
+  document.getElementById('loc-confirm').disabled = true;
+  document.getElementById('loc-picked').textContent = 'Nothing picked yet';
+  document.getElementById('loc-picked').classList.add('empty');
+  if (!_locMap) {
+    _locMap = L.map('loc-map', { attributionControl: true }).setView([lat, lon], 9);
+    L.tileLayer(TILE_URL, { maxZoom: 18, attribution: TILE_ATTRIB })
+     .on('tileerror', () => document.getElementById('loc-offline').style.display = 'flex')
+     .addTo(_locMap);
+    _locMap.attributionControl.setPrefix(LEAFLET_PREFIX);
+    _locMap.on('click', e => pickAt(e.latlng.lat, e.latlng.lng));
+    document.getElementById('loc-results').addEventListener(
+      'scroll', markLocResults, { passive: true });
+  } else {
+    _locMap.setView([lat, lon], 9);
+  }
+  if (_locMarker) { _locMap.removeLayer(_locMarker); _locMarker = null; }
+  // leaflet measured a hidden box before the overlay opened
+  setTimeout(() => _locMap.invalidateSize(), 0);
+}
+
+function closeLocationPicker() {
+  _locSeq++;
+  document.getElementById('loc-overlay').classList.remove('show');
+}
+
+function placeMarker(lat, lon) {
+  if (_locMarker) {
+    _locMarker.setLatLng([lat, lon]);
+  } else {
+    _locMarker = L.marker([lat, lon], { draggable: true }).addTo(_locMap);
+    _locMarker.on('dragend', () => {
+      const p = _locMarker.getLatLng();
+      pickAt(p.lat, p.lng);
+    });
+  }
+}
+
+// nominatim wants a referer or user agent, the browser sends both by itself
+async function pickAt(lat, lon) {
+  const seq = ++_locSeq;
+  _locPick = { lat: +lat, lon: +lon, name: '' };
+  placeMarker(lat, lon);
+  const el = document.getElementById('loc-picked');
+  el.textContent = 'Loading...';
+  el.classList.remove('empty');
+  document.getElementById('loc-confirm').disabled = false;
+  try {
+    const url = `${REVERSE_URL}?format=jsonv2&zoom=10&accept-language=en&lat=${lat}&lon=${lon}`;
+    const d = await fetch(url).then(r => r.json());
+    if (seq !== _locSeq) return;
+    _locPick.name = reverseName(d);
+  } catch (e) {
+    if (seq !== _locSeq) return;
+  }
+  paintPicked();
+}
+
+function reverseName(d) {
+  const a = d.address || {};
+  const place = a.city || a.town || a.village || a.municipality || a.county || d.name || '';
+  return [place, a.country].filter(Boolean).join(', ');
+}
+
+function paintPicked() {
+  if (!_locPick) return;
+  const { lat, lon, name } = _locPick;
+  const el = document.getElementById('loc-picked');
+  el.classList.remove('empty');
+  el.textContent = name ? `${name} (${coord(lat)}, ${coord(lon)})` : `${coord(lat)}, ${coord(lon)}`;
+}
+
+async function geocodeName(name) {
+  const url = `${GEOCODE_URL}?name=${encodeURIComponent(name)}&count=20&language=en&format=json`;
+  return (await fetch(url).then(r => r.json())).results || [];
+}
+
+// every part gets tried as the place, so both orders of "country, city" land
+async function geocodePlace(query) {
+  const parts = query.split(',').map(s => s.trim()).filter(Boolean);
+  let first = [];
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const rest = parts.filter((_, pos) => pos !== i).map(p => p.toLowerCase());
+    const hits = await geocodeName(parts[i]);
+    if (!first.length) first = hits;
+    const kept = hits.filter(h => rest.every(p => [h.country, h.admin1, h.admin2]
+                                  .some(v => (v || '').toLowerCase().includes(p))));
+    if (kept.length) return kept.slice(0, 8);
+  }
+  return first.slice(0, 8);
+}
+
+function clearLocResults() {
+  const box = document.getElementById('loc-results');
+  box.innerHTML = '';
+  box.classList.remove('has-head', 'collapsed');
+  document.getElementById('loc-results-head').style.display = 'none';
+  markLocResults();
+}
+
+function showLocResultsHead(count) {
+  const head = document.getElementById('loc-results-head');
+  head.style.display = 'flex';
+  head.classList.remove('collapsed');
+  document.getElementById('loc-results').classList.remove('collapsed');
+  document.getElementById('loc-results').classList.add('has-head');
+  document.getElementById('loc-results-count').textContent =
+    count === 1 ? '1 result' : `${count} results`;
+}
+
+function toggleLocResults() {
+  const head = document.getElementById('loc-results-head');
+  const box  = document.getElementById('loc-results');
+  const open = head.classList.toggle('collapsed');
+  box.classList.toggle('collapsed', open);
+  markLocResults();
+}
+
+// the list scrolls with a hidden scrollbar, same trap as the tab bars
+function markLocResults() {
+  const box = document.getElementById('loc-results');
+  const max = box.scrollHeight - box.clientHeight;
+  box.classList.toggle('can-t', max > 1 && box.scrollTop > 1);
+  box.classList.toggle('can-b', max > 1 && box.scrollTop < max - 1);
+}
+
+async function searchLocation() {
+  const box = document.getElementById('loc-results');
+  const q   = document.getElementById('loc-search').value.trim();
+  if (!q) { clearLocResults(); return; }
+  clearLocResults();
+  box.innerHTML = '<div class="loc-none">Searching...</div>';
+  let hits = [];
+  try {
+    hits = await geocodePlace(q);
+  } catch (e) {
+    box.innerHTML = '<div class="loc-none">Search failed, no connection.</div>';
+    return;
+  }
+  if (!hits.length) { box.innerHTML = '<div class="loc-none">Nothing found.</div>'; return; }
+  box.innerHTML = '';
+  hits.forEach(h => {
+    const where = [h.admin1, h.country].filter(Boolean).join(', ');
+    const div = document.createElement('div');
+    div.className = 'loc-hit';
+    div.innerHTML = `${h.name} <span>${where}</span>`;
+    div.onclick = () => takeHit(h);
+    box.appendChild(div);
+  });
+  showLocResultsHead(hits.length);
+  box.scrollTop = 0;
+  markLocResults();
+}
+
+function takeHit(hit) {
+  _locSeq++;
+  _locPick = {
+    lat:  hit.latitude,
+    lon:  hit.longitude,
+    name: [hit.name, hit.country].filter(Boolean).join(', '),
+  };
+  placeMarker(hit.latitude, hit.longitude);
+  _locMap.setView([hit.latitude, hit.longitude], 11);
+  document.getElementById('loc-confirm').disabled = false;
+  clearLocResults();
+  paintPicked();
+}
+
+function confirmLocation() {
+  if (!_locPick) return;
+  setField('w_lat', coord(_locPick.lat));
+  setField('w_lon', coord(_locPick.lon));
+  setLocationName(_locPick.name);
+  closeLocationPicker();
+  saveWeather();
 }
 
 const POLL_ACTIVE  = 1000;

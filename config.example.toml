@@ -79,7 +79,8 @@ provider = "openmeteo"          # openmeteo | wttr | nws (USA only)
 units    = "metric"             # metric (°C) | imperial (°F)
 lat      = -48.876667           # Point Nemo, set this to where you are
 lon      = -123.393333
-# location = "New York"         # city name instead of lat/lon, only used when provider is wttr
+location = ""                   # name of the place above, filled in when you pick one
+location_mode = "coords"        # coords | city, only which input the web ui shows
 
 # ==========================================================
 # Expert / dev configs, not in the web ui

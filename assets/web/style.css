@@ -405,6 +405,62 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 .ex-prog-line { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 7px; }
 
 .wh-modal { max-width: 720px; max-height: calc(85vh / var(--zoom)); overflow-y: auto; }
+
+.btn-pin { padding: 6px; flex-shrink: 0; line-height: 0; }
+.btn-pin .ico { width: 18px; height: 18px; }
+.city-row { flex: 1; max-width: 220px; justify-content: flex-end; }
+.loc-name { font-size: 13px; color: var(--text); text-align: right; overflow-wrap: anywhere; }
+.loc-name.unset { color: var(--muted); }
+
+.loc-modal { max-width: 640px; display: flex; flex-direction: column; }
+.loc-search { display: flex; gap: 6px; padding: 12px 16px; }
+.loc-search input { flex: 1; min-width: 0; }
+#loc-results-head {
+  display: none; align-items: center; justify-content: space-between; cursor: pointer;
+  padding: 8px 16px; border-top: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+}
+#loc-results-head:hover { color: var(--text); }
+#loc-results-head .chev { width: 13px; height: 13px; transition: transform .15s; }
+#loc-results-head.collapsed .chev { transform: rotate(-90deg); }
+/* five rows at most, and never more than a third of a short screen */
+#loc-results { max-height: min(40dvh, 165px); overflow-y: auto; }
+#loc-results.collapsed { display: none; }
+#loc-results:not(:empty):not(.has-head) { border-top: 1px solid var(--border); }
+#loc-results.can-t {
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 40px);
+          mask-image: linear-gradient(180deg, transparent 0, #000 40px);
+}
+#loc-results.can-b {
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 40px), transparent);
+          mask-image: linear-gradient(180deg, #000 calc(100% - 40px), transparent);
+}
+#loc-results.can-t.can-b {
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 40px, #000 calc(100% - 40px), transparent);
+          mask-image: linear-gradient(180deg, transparent 0, #000 40px, #000 calc(100% - 40px), transparent);
+}
+.loc-hit {
+  padding: 8px 16px; font-size: 12px; color: var(--text); cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.loc-hit:hover { background: var(--input); }
+.loc-hit span { color: var(--muted); }
+.loc-none { padding: 8px 16px; font-size: 12px; color: var(--muted); }
+.loc-map-wrap { position: relative; border-top: 1px solid var(--border); display: flex; }
+#loc-map { height: 340px; flex: 1; background: var(--input); }
+#loc-offline {
+  display: none; position: absolute; inset: 0; z-index: 500; pointer-events: none;
+  align-items: center; justify-content: center; text-align: center; padding: 24px;
+  font-size: 12px; color: var(--muted); background: var(--input);
+}
+/* leaflet paints its own light chrome, the popup panes stay out of the theme */
+#loc-map .leaflet-container { background: var(--input); font: inherit; }
+.loc-foot {
+  padding: 12px 16px; border-top: 1px solid var(--border);
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+}
+.loc-picked { font-size: 12px; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.loc-picked.empty { color: var(--muted); }
 .modal-title {
   padding: 12px 16px; border-bottom: 1px solid var(--border);
   font-size: 14px; font-weight: 700; color: var(--text);
@@ -926,6 +982,18 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   .row-right:has(> .slider-wrap:only-child) { width: 100%; padding-right: 22px; }
   .latlon-row { width: 100%; padding-right: 22px; }
   .latlon { width: auto; flex: 1; min-width: 0; }
+  .city-row { width: 100%; max-width: none; }
+
+  /* the picker owns the screen, the map takes what the search and the buttons leave */
+  #loc-overlay { padding: 0; }
+  .loc-modal {
+    max-width: none; height: 100dvh; border: none; border-radius: 0;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+  }
+  .loc-map-wrap { flex: 1; min-height: 0; }
+  #loc-map { height: auto; }
+  #loc-results { max-height: 96px; }
   .row-right > .slider-wrap:only-child { width: auto; flex: 1; }
   .bright-row .slider-wrap { width: auto; flex: 1; }
   .bright-row.global .slider-wrap { flex: none; }

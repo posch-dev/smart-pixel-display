@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Smart Pixel Display</title>
 <link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A//www.w3.org/2000/svg'%20viewBox%3D'0%200%2032%2032'%3E%3Ccircle%20cx%3D'16'%20cy%3D'16'%20r%3D'11'%20fill%3D'%234ade80'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 <script>
 (function () {
@@ -16,7 +17,7 @@
 <body>
 
 <!--
-  Icon sprite, two sources:
+  Icon sprite, two sources plus ico-pin, drawn here on the pixelarticons grid:
   - pixelarticons (MIT), https://github.com/halfmage/pixelarticons, 24x24 grid,
     no attribution required, free for any use.
   - Streamline Pixel, https://streamlinehq.com, 32x32 grid: ico-music, ico-lat,
@@ -54,6 +55,7 @@
   <symbol id="ico-rain" viewBox="0 0 24 24"><path d="M8 2h8v2H8zM6 4h12v2H6zM4 6h16v6H4zM6 12h12v2H6z"/><path d="M7 16h2v3H7zm4 0h2v5h-2zm4 0h2v3h-2z"/></symbol>
   <symbol id="ico-thunder" viewBox="0 0 24 24"><path d="M8 2h8v2H8zM6 4h12v2H6zM4 6h16v6H4zM6 12h12v2H6z"/><path d="M13 15h3v3h-3zm-2 3h5v2h-5zm2 2h3v4h-3z"/></symbol>
   <symbol id="ico-fog" viewBox="0 0 24 24"><path d="M3 5h18v2H3zM5 9h16v2H5zM3 13h18v2H3zM5 17h14v2H5z"/></symbol>
+  <symbol id="ico-pin" viewBox="0 0 24 24"><path d="M9 2h6v2H9zM7 4h10v2H7zM5 6h14v2H5zM5 8h4v2H5zM15 8h4v2h-4zM5 10h4v2H5zM15 10h4v2h-4zM5 12h14v2H5zM7 14h10v2H7zM9 16h6v2H9zM10 18h4v2h-4zM11 20h2v2h-2zM11 22h2v2h-2z"/></symbol>
   <symbol id="ico-lat" viewBox="0 0 32 32"><path d="m18.28 19.81 0 -1.52 1.52 0 0 -4.58 -1.52 0 0 -1.52 -4.57 0 0 1.52 -1.52 0 0 4.58 1.52 0 0 1.52 4.57 0z"/><path d="M7.61 10.67h1.53v10.66H7.61Z"/><path d="M6.09 21.33h1.52v1.53H6.09Z"/><path d="M6.09 9.14h1.52v1.53H6.09Z"/><path d="M4.57 19.81h1.52v1.52H4.57Z"/><path d="M4.57 10.67h1.52v1.52H4.57Z"/><path d="M3.04 18.29h1.53v1.52H3.04Z"/><path d="M3.04 12.19h1.53v1.52H3.04Z"/><path d="M1.52 16.76h1.52v1.53H1.52Z"/><path d="M1.52 13.71h1.52v1.53H1.52Z"/><path d="M0 15.24h1.52v1.52H0Z"/><path d="M30.47 15.24H32v1.52h-1.53Z"/><path d="M28.95 16.76h1.52v1.53h-1.52Z"/><path d="M28.95 13.71h1.52v1.53h-1.52Z"/><path d="M27.42 18.29h1.53v1.52h-1.53Z"/><path d="M27.42 12.19h1.53v1.52h-1.53Z"/><path d="M25.9 19.81h1.52v1.52H25.9Z"/><path d="M25.9 10.67h1.52v1.52H25.9Z"/><path d="M24.38 21.33h1.52v1.53h-1.52Z"/><path d="M24.38 9.14h1.52v1.53h-1.52Z"/><path d="M22.85 10.67h1.53v10.66h-1.53Z"/></symbol>
   <symbol id="ico-lon" viewBox="0 0 32 32"><path d="m18.28 19.81 0 -1.52 1.52 0 0 -4.58 -1.52 0 0 -1.52 -4.57 0 0 1.52 -1.52 0 0 4.58 1.52 0 0 1.52 4.57 0z"/><path d="M21.33 6.09h1.52v1.53h-1.52Z"/><path d="M19.8 4.57h1.53v1.52H19.8Z"/><path d="M10.66 7.62h10.67v1.52H10.66Z"/><path d="M18.28 3.05h1.52v1.52h-1.52Z"/><path d="M16.76 1.52h1.52v1.53h-1.52Z"/><path d="M15.23 0h1.53v1.52h-1.53Z"/><path d="M13.71 1.52h1.52v1.53h-1.52Z"/><path d="M12.19 3.05h1.52v1.52h-1.52Z"/><path d="M10.66 4.57h1.53v1.52h-1.53Z"/><path d="M9.14 6.09h1.52v1.53H9.14Z"/><path d="M21.33 24.38h1.52v1.52h-1.52Z"/><path d="M19.8 25.9h1.53v1.53H19.8Z"/><path d="M18.28 27.43h1.52v1.52h-1.52Z"/><path d="M16.76 28.95h1.52v1.53h-1.52Z"/><path d="M15.23 30.48h1.53V32h-1.53Z"/><path d="M13.71 28.95h1.52v1.53h-1.52Z"/><path d="M12.19 27.43h1.52v1.52h-1.52Z"/><path d="M10.66 22.86h10.67v1.52H10.66Z"/><path d="M10.66 25.9h1.53v1.53h-1.53Z"/><path d="M9.14 24.38h1.52v1.52H9.14Z"/></symbol>
 </svg>
@@ -324,6 +326,10 @@
       <div class="row-right"><div class="seg" id="w_units_seg"><button onclick="setUnits('metric')" id="w_u_metric">°C</button><button onclick="setUnits('imperial')" id="w_u_imperial">°F</button></div></div>
     </div>
     <div class="row">
+      <div class="row-left"><div class="row-label">Location</div></div>
+      <div class="row-right"><div class="seg" id="w_mode_seg"><button onclick="setLocationMode('coords')" id="w_m_coords">Coordinates</button><button onclick="setLocationMode('city')" id="w_m_city">Location</button></div></div>
+    </div>
+    <div class="row" id="w_coords_row">
       <div class="row-left"><div class="row-label">Latitude / Longitude</div></div>
       <div class="row-right latlon-row" style="gap:6px;align-items:center">
         <svg class="ico"><use href="#ico-lat"/></svg>
@@ -334,8 +340,11 @@
       </div>
     </div>
     <div class="row" id="w_location_row">
-      <div class="row-left"><div class="row-label">City Name</div><div class="row-sub">Overrides lat/lon</div></div>
-      <div class="row-right" style="flex:1;max-width:165px"><input type="text" id="w_location" style="width:100%" placeholder="e.g. Vienna" onchange="saveWeather()"></div>
+      <div class="row-left"><div class="row-label">Place</div><div class="row-sub" id="w_location_coords"></div></div>
+      <div class="row-right city-row" style="gap:8px;align-items:center">
+        <button class="btn btn-ghost btn-pin" onclick="openLocationPicker()" title="Pick on a map"><svg class="ico"><use href="#ico-pin"/></svg></button>
+        <div id="w_location" class="loc-name"></div>
+      </div>
     </div>
   </div>
 
@@ -575,6 +584,32 @@
   <div id="bp-full-slot"></div>
 </div>
 
+<div id="loc-overlay" class="modal-overlay" onclick="if(event.target===this)closeLocationPicker()">
+<div class="modal loc-modal">
+  <div class="modal-title">Pick a location</div>
+  <div class="loc-search">
+    <input type="text" id="loc-search" placeholder="Search a place" onfocus="this.select()" onkeydown="if(event.key==='Enter')searchLocation()">
+    <button class="btn btn-ghost" onclick="searchLocation()">Search</button>
+  </div>
+  <div id="loc-results-head" onclick="toggleLocResults()">
+    <span id="loc-results-count"></span>
+    <svg class="ico chev"><use href="#ico-chevron-down"/></svg>
+  </div>
+  <div id="loc-results"></div>
+  <div class="loc-map-wrap">
+    <div id="loc-map"></div>
+    <div id="loc-offline">No connection, the map stays blank. Search or coordinates still work.</div>
+  </div>
+  <div class="loc-foot">
+    <div id="loc-picked" class="loc-picked">Nothing picked yet</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="closeLocationPicker()">Cancel</button>
+      <button class="btn btn-accent" id="loc-confirm" onclick="confirmLocation()" disabled>Confirm</button>
+    </div>
+  </div>
+</div>
+</div>
+
 <div id="wh-del-overlay" class="modal-overlay" onclick="if(event.target===this)closeDeleteWebhook()">
 <div class="modal">
   <div class="modal-title">Delete webhook</div>
@@ -588,6 +623,7 @@
 
 <div id="toast"></div>
 
+<script src="vendor/leaflet/leaflet.js"></script>
 <script src="vendor/gifenc.js"></script>
 <script src="vendor/mp4-muxer.js"></script>
 <script src="vendor/webm-muxer.js"></script>

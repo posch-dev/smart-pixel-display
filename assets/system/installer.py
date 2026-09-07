@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import getpass
+import json
 import os
 import re
 import signal
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 
@@ -85,17 +87,6 @@ def _ask_choice(prompt, choices, default):
         if _auto:
             return default
         warn(f"Pick one of: {', '.join(choices)}")
-
-
-def _ask_float(prompt, default, show_default=True):
-    while True:
-        answer = _ask(prompt, default, show_default=show_default)
-        try:
-            return float(answer)
-        except ValueError:
-            if _auto:
-                return float(default)
-            warn("That is not a number.")
 
 
 def _ask_int(prompt, default):
@@ -265,21 +256,87 @@ def _ask_nowplaying(env, doc):
     return wanted, all(wanted[key] for key in wanted if key != "GETSONGBPM_API_KEY")
 
 
+COORDS_RE   = re.compile(r"^\s*([-+]?\d{1,2}(?:\.\d+)?)\s*,\s*([-+]?\d{1,3}(?:\.\d+)?)\s*$")
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+
+
+def _geocode_name(name):
+    url = f"{GEOCODE_URL}?name={urllib.parse.quote(name)}&count=20&language=en&format=json"
+    with urllib.request.urlopen(url, timeout=10) as response:
+        return json.load(response).get("results") or []
+
+
+def _matches(hit, parts):
+    return all(any(part in (hit.get(field) or "").lower()
+                   for field in ("country", "admin1", "admin2"))
+               for part in parts)
+
+
+# the hint asks for country first, so the place is the last part, but a query the
+# other way round still lands because every part gets tried as the place
+def _geocode(query):
+    parts = [part.strip() for part in query.split(",") if part.strip()]
+    first = []
+    for index in reversed(range(len(parts))):
+        rest = [part.lower() for pos, part in enumerate(parts) if pos != index]
+        hits = _geocode_name(parts[index])
+        first = first or hits
+        kept = [hit for hit in hits if _matches(hit, rest)]
+        if kept:
+            return kept[:8]
+    return first[:8]
+
+
+def _place_name(hit):
+    return ", ".join(part for part in (hit.get("name"), hit.get("country")) if part)
+
+
+def _ask_location(weather):
+    if _auto:
+        return
+    print(f'{DIM}  Coordinates as "<lat>, <lon>" or a location as "<country>, <city>"{RESET}')
+    while True:
+        answer = _ask("Enter Coordinates/Location", show_default=False)
+        coords = COORDS_RE.match(answer)
+        if coords:
+            weather["lat"]           = float(coords.group(1))
+            weather["lon"]           = float(coords.group(2))
+            weather["location"]      = ""
+            weather["location_mode"] = "coords"
+            return
+        if not answer:
+            warn("Nothing entered.")
+            continue
+        try:
+            hits = _geocode(answer)
+        except Exception:
+            warn("The place lookup did not answer, enter coordinates instead.")
+            continue
+        if not hits:
+            warn("Nothing found for that, try another spelling or enter coordinates.")
+            continue
+        for number, hit in enumerate(hits, 1):
+            where = ", ".join(part for part in (hit.get("admin1"), hit.get("country")) if part)
+            print(f"  {number}) {hit['name']}, {where}  {hit['latitude']:.4f}, {hit['longitude']:.4f}")
+        pick = _ask_int("Pick a number", 1)
+        if not 1 <= pick <= len(hits):
+            warn("Not one of the numbers.")
+            continue
+        hit = hits[pick - 1]
+        weather["lat"]           = float(hit["latitude"])
+        weather["lon"]           = float(hit["longitude"])
+        weather["location"]      = _place_name(hit)
+        weather["location_mode"] = "city"
+        return
+
+
 def _ask_dashboard(doc):
     print(f"{DIM}  Calendar events arrive from an iPhone shortcut posting to /calendar.{RESET}")
     print(f"{DIM}  Ready made shortcuts: {SHORTCUTS_REPO}{RESET}")
     weather = doc["dashboard"]["weather"]
     weather["provider"] = _ask_choice("Weather provider", ["openmeteo", "wttr", "nws"], weather["provider"])
     weather["units"]    = _ask_choice("Units", ["metric", "imperial"], weather["units"])
-    if weather["provider"] == "wttr":
-        location = _ask("City name, empty to use coordinates", weather.get("location", ""))
-        if location:
-            weather["location"] = location
-    # the template ships Point Nemo, showing that as the default helps nobody
-    untouched = weather["lat"] == _load_template()["dashboard"]["weather"]["lat"]
-    print(f"{DIM}  Coordinates of the place the weather is for, in decimal degrees.{RESET}")
-    weather["lat"] = _ask_float("Latitude", weather["lat"], show_default=not untouched)
-    weather["lon"] = _ask_float("Longitude", weather["lon"], show_default=not untouched)
+    _ask_location(weather)
 
 
 def _local_time():
