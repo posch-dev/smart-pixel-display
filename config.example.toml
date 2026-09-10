@@ -90,6 +90,8 @@ location_mode = "coords"        # coords | city, only which input the web ui sho
 port      = 12832               # web ui and api port, takes a restart
 debug_log = false               # verbose log, takes effect on a running service
 
+visualize_port = 12833          # --visualize serves the panel here instead of the display
+
 reconnect_delay = 5             # seconds to wait before a BLE reconnect
 
 time_windows     = [[7, 11], [18, 25], [33, 41], [47, 56]]  # verse, minute ranges inside each hour where the roll happens

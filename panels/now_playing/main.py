@@ -16,6 +16,7 @@ import display
 import assets.system.config as config
 import assets.system.log as log
 import assets.system.webhooks as webhooks
+import assets.system.visualize as visualize
 from pypixelcolor import AsyncClient
 from PIL import Image
 
@@ -28,6 +29,10 @@ LAST_10  = 10     # if <= this many seconds remain, let current song finish
 MAX_REPS   = 2      # same (title, artist) more than this many times -> ignored
 COVER_WAIT = 7.0    # seconds to wait for cover before rendering with placeholder
 IDLE_SLEEP = 1.0    # seconds to sleep when idle (nothing playing, waiting)
+CANNED_CHUNK_S = 7.0    # chunk length while walking canned songs, so eleven of them do not take four minutes
+CANNED_DWELL_S = 4.0    # and how long a song stays up once it is visible
+
+on_song_shown = None    # set by use_canned_songs, called when a new song reaches the screen
 
 def _black_hex() -> str:
     img = Image.new("RGB", (128, 32), (0, 0, 0))
@@ -42,7 +47,8 @@ def _other(slot: int) -> int:
     return SLOT_B if slot == SLOT_A else SLOT_A
 
 
-def _beat_chunk_s(bpm: int | None, target_s: float = CHUNK_S) -> float:
+def _beat_chunk_s(bpm: int | None, target_s: float | None = None) -> float:
+    target_s = CHUNK_S if target_s is None else target_s
     if not bpm:
         return target_s
     gif_s = (60.0 / bpm) * 2          # GIF = frames_per_beat * 2 at FRAME_MS
@@ -335,6 +341,8 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     active_cover     = state.get("cover") is not None
                     if old is not None:
                         await _safe_delete(client, ble_lock=ble_lock, slot=old)
+                    if song_changed and on_song_shown:
+                        on_song_shown()
                     if song_changed:
                         accents = display.last_accents or ((0,0,0),(0,0,0),(0,0,0))
                         asyncio.create_task(webhooks.fire("nowplaying", "on_song_change", {
@@ -451,14 +459,69 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
         await _cancel_task(standby_task)
 
 
-async def main() -> None:
+_walk = {"index": 0, "shown": 0, "since": 0.0}
+
+
+def use_canned_songs(offline: bool = False) -> None:
+    # the state machine keeps running as it is, only the scrobbler behind it is replaced
+    global COVER_WAIT, CHUNK_S, on_song_shown
+    if offline:
+        COVER_WAIT = 0.0          # no cover is coming, so do not sit and wait for one
+    CHUNK_S = CANNED_CHUNK_S
+    covers  = {}
+    _walk.update(index=0, shown=0, since=time.monotonic())
+
+    def get_state() -> dict:
+        index = _walk["index"]
+        song  = display.STATES[index]
+        if index not in covers:
+            covers[index] = None if offline else display.fetch_cover(song["query"])
+        state = song["state"]
+        if visualize.showing("nowplaying"):
+            visualize.label(
+                f"{index + 1}/{len(display.STATES)}  {state['artist']} - {state['title']}  {song['note']}")
+        return {**state, "playing": True, "genres": [], "cover": covers[index], "cover_url": None}
+
+    def shown() -> None:
+        # the panel decides the pace, a timer here would outrun the render and skip songs
+        _walk["shown"] += 1
+        _walk["since"]  = time.monotonic()
+
+    poller.start     = lambda: None
+    poller.get_state = get_state
+    on_song_shown    = shown
+
+
+def walk_songs_done() -> bool:
+    return _walk["shown"] >= len(display.STATES)
+
+
+async def advance_canned_songs(loop: bool = False) -> None:
+    # holds each song on screen for its dwell, then hands the next one to the panel
+    while True:
+        if walk_songs_done():
+            if not loop:
+                return
+            _walk.update(index=0, shown=0, since=time.monotonic())
+        await asyncio.sleep(0.25)
+        if _walk["since"] and time.monotonic() - _walk["since"] >= CANNED_DWELL_S:
+            _walk["since"] = 0.0
+            _walk["index"] = min(_walk["index"] + 1, len(display.STATES) - 1)
+
+
+async def main(args=None) -> None:
+    args = args or visualize.parse()
+
+    if visualize.canned(args):
+        use_canned_songs(args.offline)
+        asyncio.create_task(advance_canned_songs(loop=True))
     poller.start()
     log.info("nowplaying", f"starting, connecting to {MAC}")
 
     while True:
         try:
-            async with AsyncClient(MAC) as client:
-                log.info("nowplaying", "ble connected")
+            async with visualize.client(MAC, args, "nowplaying") as client:
+                log.info("nowplaying", f"{visualize.tag()} connected")
                 await client.set_brightness(80)
                 await run_loop(client)
         except KeyboardInterrupt:
@@ -467,9 +530,21 @@ async def main() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.error("nowplaying", f"ble error: {e}, reconnecting in 5s")
+            log.error("nowplaying", f"{visualize.tag()} error: {e}, reconnecting in 5s")
             await asyncio.sleep(5)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import argparse
+    parser = argparse.ArgumentParser(parents=[visualize.flags()])
+    parser.add_argument("--poll-debug", action="store_true",
+                        help="dump what the scrobbler reports, console only, no display")
+    parsed = parser.parse_args()
+    if parsed.poll_debug:
+        import assets.system.tools as tools
+        tools.poll_debug()
+    else:
+        try:
+            asyncio.run(main(parsed))
+        except KeyboardInterrupt:
+            print("\nStopped.")

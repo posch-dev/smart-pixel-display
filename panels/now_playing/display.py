@@ -12,6 +12,9 @@ from math import exp
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 import assets.system.log as log
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from genre_presets import get_preset
+
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageOps
 
 W, H      = 128, 32
@@ -383,10 +386,70 @@ def generate_gif(state: dict, quick: bool = False) -> bytes:
     return buf.getvalue()
 
 
+def fetch_cover(query: str) -> bytes | None:
+    # itunes search, 32px art. the only cover source for the canned states and the readme assets
+    try:
+        r   = requests.get("https://itunes.apple.com/search",
+                           params={"term": query, "media": "music", "limit": 1}, timeout=10)
+        url = r.json()["results"][0]["artworkUrl100"].replace("100x100bb", "32x32bb")
+        return requests.get(url, timeout=10).content
+    except Exception as error:
+        log.warn("nowplaying", f"cover fetch failed for {query!r}: {error}")
+        return None
+
+
+def _song(title, artist, album, bpm, dance, acoustic, elapsed, duration, genres):
+    return {
+        "title": title, "artist": artist, "album": album,
+        "bpm": bpm, "danceability": dance, "acousticness": acoustic,
+        "elapsed_s": elapsed, "duration_s": duration,
+        "preset": get_preset(genres),
+    }
+
+
+# The eight with a file are the readme assets. The last three cover what the others do not:
+# an unknown duration, a dense trap beat, and a title and artist that both have to be cut.
+# elapsed_s is only read for the duration fallback, the panel restarts every track at zero.
+STATES = [
+    {"file": "nowplaying_go_away.gif", "query": "go away tate mcrae", "note": "high bpm pop",
+     "state": _song("go away", "Tate McRae", "So Close To What (Apple Music Edition)",
+                    140, 85, 5, 74.0, 213.0, ["pop", "electropop"])},
+    {"file": "nowplaying_all_the_love.gif", "query": "all the love kanye west", "note": "hip hop, mid bpm",
+     "state": _song("All The Love", "Kanye West", "Bully",
+                    87, 65, 20, 81.0, 180.0, ["hip hop", "rap"])},
+    {"file": "nowplaying_trying_on_shoes.gif", "query": "trying on shoes tate mcrae", "note": "synth pop",
+     "state": _song("trying on shoes", "Tate McRae", "So Close To What (Deluxe)",
+                    108, 75, 15, 102.0, 170.0, ["pop", "synth pop"])},
+    {"file": "nowplaying_babybell.gif", "query": "babybell breitner", "note": "german hip hop, short strings",
+     "state": _song("babybell", "breitner", "babybell",
+                    100, 70, 25, 45.0, 180.0, ["hip hop", "german hip hop"])},
+    {"file": "nowplaying_big_city_life.gif", "query": "big city life mattafix", "note": "reggae, long album name",
+     "state": _song("Big City Life", "Mattafix", "Signs of a Struggle",
+                    87, 72, 30, 60.0, 228.0, ["reggae", "hip hop", "dancehall"])},
+    {"file": "nowplaying_sword_from_the_stone.gif", "query": "sword from the stone passenger", "note": "acoustic, flat bars",
+     "state": _song("Sword from the Stone", "Passenger", "Sword from the Stone",
+                    130, 35, 90, 90.0, 240.0, ["folk", "singer-songwriter", "acoustic"])},
+    {"file": "nowplaying_media_vita.gif", "query": "media vita hardknock music", "note": "beats, default energy",
+     "state": _song("Media Vita", "Hardknock Music", "Media Vita",
+                    92, 60, 35, 55.0, 195.0, ["hip hop", "beats"])},
+    {"file": "nowplaying_mice_on_venus.gif", "query": "mice on venus c418", "note": "lowest bpm, most acoustic",
+     "state": _song("Mice on Venus", "C418", "Minecraft - Volume Alpha",
+                    60, 20, 85, 120.0, 281.0, ["ambient", "electronic", "soundtrack"])},
+    {"query": "make it hot ally", "note": "unknown duration, bar assumes 200s",
+     "state": _song("Make It Hot", "Ally", "Make It Hot",
+                    118, 80, 10, 52.0, None, ["pop", "dance"])},
+    {"query": "sirens travis scott", "note": "trap, dense bars",
+     "state": _song("Sirens", "Travis Scott", "JACKBOYS 2",
+                    128, 78, 8, 236.0, 240.0, ["hip hop", "trap"])},
+    {"query": "by the end of the night ellie goulding southstar", "note": "title and artist both past the text column",
+     "state": _song("By the End of the Night", "Ellie Goulding & southstar", "By the End of the Night",
+                    122, 68, 22, 95.0, 260.0, ["pop", "electropop", "dance"])},
+]
+
+
 if __name__ == "__main__":
     import argparse, sys
     sys.path.insert(0, os.path.dirname(__file__))
-    from genre_presets import get_preset
 
     p = argparse.ArgumentParser()
     p.add_argument("-font", type=int, default=_FONT_CHOICE,
@@ -394,29 +457,8 @@ if __name__ == "__main__":
     args = p.parse_args()
     set_font(args.font)
 
-    cover_bytes = None
-    try:
-        r   = requests.get("https://itunes.apple.com/search",
-                           params={"term": "Tate McRae go away", "media": "music", "limit": 1},
-                           timeout=10)
-        url = r.json()["results"][0]["artworkUrl100"].replace("100x100bb", "32x32bb")
-        cover_bytes = requests.get(url, timeout=10).content
-        print("Cover fetched.")
-    except Exception as e:
-        print(f"Cover fetch failed: {e}")
-
-    state = {
-        "title":        "go away (this is a longer title)",
-        "artist":       "Tate McRae",
-        "album":        "So Close To What",
-        "cover":        cover_bytes,
-        "bpm":          140,
-        "danceability": 80,
-        "acousticness": 10,
-        "elapsed_s":    67.0,
-        "duration_s":   213.0,
-        "preset":       get_preset(["pop", "electropop"]),
-    }
+    song  = STATES[0]
+    state = dict(song["state"], cover=fetch_cover(song["query"]))
 
     print("Rendering GIF...")
     gif_bytes = generate_gif(state)

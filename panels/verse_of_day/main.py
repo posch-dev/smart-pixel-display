@@ -5,12 +5,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 import asyncio
 import io
+import time
 import binascii
 import requests
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-from pypixelcolor import AsyncClient
 import assets.system.config as config
+import assets.system.visualize as visualize
 
 MAC_ADDRESS      = config.get("device",       "mac_address")
 BRIGHTNESS       = config.get("verse_of_day", "brightness")
@@ -26,6 +27,14 @@ CROSS_GAP  = 4
 BOOK_FONT_SIZE = 14
 NUM_FONT_SIZE  = 14
 WORD_GAP       = 2
+
+STATES = [
+    ("JOB 3:3",              "short book name"),
+    ("PSALMS 23:1",          "medium book name"),
+    ("1 THESSALONIANS 5:18", "longest book name, numeric prefix"),
+    ("1 CORINTHIANS 13:4",   "numeric prefix, wide chapter"),
+    ("ECCLESIASTES 3:1",     "long book, single digits"),
+]
 
 _session = requests.Session()
 
@@ -153,24 +162,33 @@ def render_reference(text: str, display_w: int, display_h: int, color: tuple | N
     return binascii.hexlify(buf.getvalue()).decode()
 
 
-async def run() -> None:
-    print("Fetching verse of the day ...")
-    votd = fetch_votd()
-    print(f"Reference: {votd['reference']}")
+async def run(args=None) -> None:
+    args = args or visualize.parse()
 
-    print(f"Connecting to {MAC_ADDRESS} ...")
-    async with AsyncClient(MAC_ADDRESS) as client:
+    if visualize.canned(args) or args.offline:
+        reference = STATES[0][0]
+        print(f"Reference: {reference} (canned)")
+    else:
+        print("Fetching verse of the day ...")
+        reference = fetch_votd()["reference"]
+        print(f"Reference: {reference}")
+
+    print(f"[{visualize.tag()}] connecting to {MAC_ADDRESS} ...")
+    async with visualize.client(MAC_ADDRESS, args, "verse_of_day") as client:
         info = client.get_device_info()
         display_w, display_h = info.width, info.height
         print(f"Display: {display_w}x{display_h}")
 
-        frame = render_reference(votd["reference"], display_w, display_h)
-
         await client.set_brightness(BRIGHTNESS)
         print("Displaying, press Ctrl+C to stop.")
+        started = time.monotonic()
         while True:
+            if visualize.canned(args):
+                index, (reference, note) = visualize.state_at(STATES, started)
+                visualize.label(f"{index + 1}/{len(STATES)}  {reference}  {note}", "verse_of_day")
+            frame = render_reference(reference, display_w, display_h)
             await client.send_image_hex(frame, ".png")
-            await asyncio.sleep(REFRESH_INTERVAL)
+            await asyncio.sleep(visualize.STATE_S if visualize.canned(args) else REFRESH_INTERVAL)
 
 
 if __name__ == "__main__":

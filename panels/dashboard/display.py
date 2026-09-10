@@ -19,6 +19,7 @@ import weather as weather_mod
 import calendar_store
 import assets.system.config as config
 import assets.system.log as log
+import assets.system.visualize as visualize
 
 MAC              = config.get("device", "mac_address")
 BRIGHTNESS       = config.get("device", "brightness", 50)
@@ -639,6 +640,38 @@ _TEST_CAL_CASES = [
     (None, None,    "Gym", "09:00", "10:30"),
 ]
 
+STATE_S = 6.0   # a dashboard state carries more to read than a clock face does
+
+# every way the freezing line can fall between the three numbers, since each is coloured on its own
+_MILD    = {"temp_now": 12, "temp_high": 18, "temp_low":   5, "condition": "clear"}
+_THAW    = {"temp_now":  3, "temp_high":  7, "temp_low":  -2, "condition": "partly cloudy"}
+_FREEZE  = {"temp_now": -4, "temp_high":  1, "temp_low":  -9, "condition": "snow"}
+_DEEP    = {"temp_now": -8, "temp_high": -2, "temp_low": -14, "condition": "snow"}
+_AT_ZERO = {"temp_now":  0, "temp_high":  3, "temp_low":  -1, "condition": "overcast"}
+
+
+def _states() -> list:
+    # every icon, then the temperature colour flip, then every calendar layout
+    states = [({**_MILD, "condition": c}, None, f"{c}, above freezing") for c in _TEST_CONDITIONS]
+    states += [
+        (_THAW,    None, "now above, low below"),
+        (_FREEZE,  None, "now below, high above, low below"),
+        (_DEEP,    None, "all three below, everything blue"),
+        (_AT_ZERO, None, "now exactly at zero"),
+        ({**_MILD, "temp_now": 31, "temp_high": 36, "temp_low": 24}, None, "two digit temperatures"),
+    ]
+    states += [
+        (_MILD,   _TEST_CAL_CASES[0], "event with travel time, leave in 23 min"),
+        (_MILD,   _TEST_CAL_CASES[1], "event with travel time, leave in 45 min"),
+        (_FREEZE, _TEST_CAL_CASES[2], "overdue, leave now and how late"),
+        (_MILD,   _TEST_CAL_CASES[3], "event far out, 90 min"),
+        (_MILD,   _TEST_CAL_CASES[4], "all day event, no departure"),
+    ]
+    return states
+
+
+STATES = _states()
+
 
 def _add_clearing_pixel(hex_frame: str) -> str:
     import io as _io, binascii as _bin
@@ -649,18 +682,24 @@ def _add_clearing_pixel(hex_frame: str) -> str:
     return _bin.hexlify(buf.getvalue()).decode()
 
 
-async def run_with_client(client: AsyncClient, clearing=None, ble_lock=None) -> None:
+async def run_with_client(client: AsyncClient, clearing=None, ble_lock=None,
+                          all_states: bool = False) -> None:
     global _weather_task
-    if _weather_task is None or _weather_task.done():
+    if not all_states and (_weather_task is None or _weather_task.done()):
         _weather_task = asyncio.create_task(_weather_fetcher())
     frame_count = 0
+    started     = time.monotonic()
     while True:
         t_frame_start  = time.monotonic()
         now            = datetime.now().astimezone()
         colon_on       = frame_count % 2 == 0
         leave_blink_on = not colon_on
         now_color      = C_PURPLE if frame_count % 2 == 0 else C_ORANGE
-        frame = render_frame(now, _weather, colon_on, leave_blink_on, None, now_color)
+        weather, cal   = _weather, None
+        if all_states:
+            index, (weather, cal, note) = visualize.state_at(STATES, started, STATE_S)
+            visualize.label(f"{index + 1}/{len(STATES)}  {note}", "dashboard")
+        frame = render_frame(now, weather, colon_on, leave_blink_on, cal, now_color)
         if clearing and clearing[0]:
             frame = _add_clearing_pixel(frame)
         if ble_lock:
@@ -673,24 +712,24 @@ async def run_with_client(client: AsyncClient, clearing=None, ble_lock=None) -> 
         await asyncio.sleep(max(0.0, BLINK_S - elapsed))
 
 
-async def run() -> None:
+async def run(args=None) -> None:
     global _weather_task
-    test_mode = "--test" in sys.argv
-    test_idx  = 0
+    args        = args or visualize.parse()
     frame_count = 0
+    started     = time.monotonic()
 
-    if test_mode:
-        print(f"[display] test mode, cycling weather + {len(_TEST_CAL_CASES)} cal cases")
-
-    if _weather_task is None or _weather_task.done():
+    walking = visualize.canned(args)
+    if walking:
+        print(f"[display] walking {len(STATES)} states")
+    elif not args.offline and (_weather_task is None or _weather_task.done()):
         _weather_task = asyncio.create_task(_weather_fetcher())
 
     while True:
         try:
-            print(f"[display] Connecting to {MAC} ...")
-            async with AsyncClient(MAC) as client:
+            print(f"[{visualize.tag()}] connecting to {MAC} ...")
+            async with visualize.client(MAC, args, "dashboard") as client:
                 await client.set_brightness(BRIGHTNESS)
-                print("[display] Connected.")
+                print(f"[{visualize.tag()}] connected")
                 while True:
                     t_frame_start  = time.monotonic()
                     now            = datetime.now().astimezone()
@@ -698,18 +737,13 @@ async def run() -> None:
                     leave_blink_on = not colon_on
                     now_color      = C_PURPLE if frame_count % 2 == 0 else C_ORANGE
                     cal_override   = None
+                    w_frame        = _weather
 
-                    if test_mode:
-                        condition    = _TEST_CONDITIONS[test_idx % len(_TEST_CONDITIONS)]
-                        cal_override = _TEST_CAL_CASES[(test_idx // 10) % len(_TEST_CAL_CASES)]
-                        test_idx    += 1
-                        w_frame = {
-                            "temp_now": 12, "temp_high": 18, "temp_low": 5,
-                            "condition": condition,
-                        }
-                        print(f"[test] {condition} | cal={cal_override}")
-                    else:
-                        w_frame = _weather
+                    if walking:
+                        index, (w_frame, cal_override, note) = visualize.state_at(STATES, started, STATE_S)
+                        visualize.label(f"{index + 1}/{len(STATES)}  {note}", "dashboard")
+                    elif args.offline:
+                        w_frame = _MILD
 
                     await asyncio.wait_for(client.send_image_hex(
                         render_frame(now, w_frame, colon_on, leave_blink_on, cal_override, now_color), ".png"), timeout=10)
@@ -727,11 +761,14 @@ async def run() -> None:
 if __name__ == "__main__":
     import argparse
     import weather as _w_mod
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(parents=[visualize.flags()])
     p.add_argument("--lat", type=float, default=None)
     p.add_argument("--lon", type=float, default=None)
     _a = p.parse_args()
     if _a.lat is not None and _a.lon is not None:
         _w_mod.set_location(_a.lat, _a.lon)
         print(f"[config] location set to {_a.lat}, {_a.lon}")
-    asyncio.run(run())
+    try:
+        asyncio.run(run(_a))
+    except KeyboardInterrupt:
+        print("\nStopped.")

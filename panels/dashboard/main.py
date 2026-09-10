@@ -17,4 +17,7 @@ if __name__ == "__main__":
         weather.set_location(lat, lon)
         print(f"[config] location set to {lat}, {lon}")
 
-    asyncio.run(display.run())
+    try:
+        asyncio.run(display.run())
+    except KeyboardInterrupt:
+        print("\nStopped.")

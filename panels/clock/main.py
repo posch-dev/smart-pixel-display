@@ -8,10 +8,10 @@ import binascii
 import time
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-from pypixelcolor import AsyncClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import assets.system.config as config
+import assets.system.visualize as visualize
 
 DISPLAY_W = 128
 DISPLAY_H = 32
@@ -30,6 +30,14 @@ COLON_AREA_W = 10  # pixel width reserved for the colon
 COLON_DOT_SIZE = 3  # side length of each dot square in pixels
 
 BACKGROUND  = (0, 0, 0)
+
+STATES = [
+    ("00", "00", "midnight, all zeroes"),
+    ("06", "05", "leading zeroes both sides"),
+    ("12", "34", "midday"),
+    ("18", "45", "evening"),
+    ("23", "59", "last minute of the day"),
+]
 
 
 _font_cache: ImageFont.FreeTypeFont | None = None
@@ -101,20 +109,26 @@ def render_frame(hour: str, minute: str, show_colon: bool, color: tuple | None =
     return binascii.hexlify(buf.getvalue()).decode()
 
 
-async def run() -> None:
+async def run(args=None) -> None:
+    args      = args or visualize.parse()
     last_sent = None
+    started   = time.monotonic()
     while True:
         try:
-            print(f"Connecting to {MAC_ADDRESS} ...")
-            async with AsyncClient(MAC_ADDRESS) as client:
-                print("Connected.")
+            print(f"[{visualize.tag()}] connecting to {MAC_ADDRESS} ...")
+            async with visualize.client(MAC_ADDRESS, args, "clock") as client:
+                print(f"[{visualize.tag()}] connected")
                 await client.set_brightness(BRIGHTNESS)
 
                 while True:
                     blink_interval = config.get("clock", "blink_interval", 1.0)
-                    now = datetime.now()
-                    hour = f"{now.hour:02d}"
-                    minute = f"{now.minute:02d}"
+                    if visualize.canned(args):
+                        index, (hour, minute, note) = visualize.state_at(STATES, started)
+                        visualize.label(f"{index + 1}/{len(STATES)}  {hour}:{minute}  {note}", "clock")
+                    else:
+                        now    = datetime.now()
+                        hour   = f"{now.hour:02d}"
+                        minute = f"{now.minute:02d}"
                     if blink_interval == 0:
                         colon_on = True
                     else:
@@ -135,4 +149,7 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        print("\nStopped.")

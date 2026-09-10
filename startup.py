@@ -19,8 +19,10 @@ from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.api as api
 import assets.system.webhooks as webhooks
-from panels.clock.main import DISPLAY_W, DISPLAY_H, render_frame
-from panels.verse_of_day.main import fetch_votd, render_reference, FONT_PATH as _VERSE_FONT_PATH
+import assets.system.visualize as visualize
+from panels.clock.main import DISPLAY_W, DISPLAY_H, render_frame, STATES as _CLOCK_STATES
+from panels.verse_of_day.main import (fetch_votd, render_reference,
+                                      FONT_PATH as _VERSE_FONT_PATH, STATES as _VERSE_STATES)
 
 _MD_DIR = os.path.join(os.path.dirname(__file__), "panels", "dashboard")
 _NP_DIR = os.path.join(os.path.dirname(__file__), "panels", "now_playing")
@@ -36,7 +38,8 @@ _md_spec.loader.exec_module(md_display)
 
 import poller  as np_poller
 import calendar_store
-from panels.now_playing.main import run_loop as np_run_loop
+from panels.now_playing.main import (run_loop as np_run_loop, use_canned_songs,
+                                     advance_canned_songs, CANNED_CHUNK_S, CANNED_DWELL_S)
 
 MAC_ADDRESS     = config.get("device", "mac_address")
 DIRECT_CONNECT  = config.get("device", "direct_connect", False)
@@ -44,6 +47,10 @@ RECONNECT_DELAY = config.get("expert", "reconnect_delay", 5)
 MAX_SLOTS       = 256
 BLE_SEND_TIMEOUT = 5
 _CLOCK_TICK     = 0.5
+
+_all_states     = False
+_offline        = False
+_states_started = 0.0
 
 
 def _ble_target():
@@ -199,9 +206,13 @@ async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
     last_sent = None
     while True:
         blink_interval = config.get("clock", "blink_interval", 1.0)
-        now = datetime.now()
-        hour = f"{now.hour:02d}"
-        minute = f"{now.minute:02d}"
+        if _all_states:
+            index, (hour, minute, note) = visualize.state_at(_CLOCK_STATES, _states_started)
+            visualize.label(f"{index + 1}/{len(_CLOCK_STATES)}  {hour}:{minute}  {note}", "clock")
+        else:
+            now = datetime.now()
+            hour = f"{now.hour:02d}"
+            minute = f"{now.minute:02d}"
         if blink_interval == 0:
             colon_on = True
         else:
@@ -221,7 +232,15 @@ async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
     last_fired_reference = None
     while True:
         refresh = config.get("expert", "refresh_interval", 30)
-        frame = await asyncio.to_thread(get_verse_frame)
+        if _all_states:
+            index, (reference, note) = visualize.state_at(_VERSE_STATES, _states_started)
+            visualize.label(f"{index + 1}/{len(_VERSE_STATES)}  {reference}  {note}", "verse_of_day")
+            frame   = render_reference(reference, DISPLAY_W, DISPLAY_H)
+            refresh = visualize.STATE_S
+        elif _offline:
+            frame = render_reference(_VERSE_STATES[0][0], DISPLAY_W, DISPLAY_H)
+        else:
+            frame = await asyncio.to_thread(get_verse_frame)
         if frame:
             if _verse_reference and _verse_reference != last_fired_reference:
                 last_fired_reference = _verse_reference
@@ -240,12 +259,13 @@ async def _verse_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
 
 
 async def _nowplaying_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
+    visualize.label("", "nowplaying")
     brightness = _get_active_brightness("nowplaying")
     await np_run_loop(client, initial_black=False, brightness=brightness, ble_lock=ble_lock)
 
 
 async def _dashboard_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: list) -> None:
-    await md_display.run_with_client(client, clearing, ble_lock)
+    await md_display.run_with_client(client, clearing, ble_lock, all_states=_all_states)
 
 
 async def _nowplaying_watcher() -> None:
@@ -346,10 +366,53 @@ async def _cancel(task: asyncio.Task | None, lock: asyncio.Lock | None = None) -
     except Exception as e:
         log.error("mode", f"panel task raised while cancelling: {e!r}")
 
-async def run() -> None:
+async def _all_states_walk() -> None:
+    # triggers each panel in turn through the real scheduler, so the switch is tested too
+    global _states_started
+    import panels.now_playing.display as _np_display   # read only, the panel keeps its own copy
+    spans = {
+        "clock":        len(_CLOCK_STATES)     * visualize.STATE_S,
+        "verse_of_day": len(_VERSE_STATES)     * visualize.STATE_S,
+        "dashboard":    len(md_display.STATES) * md_display.STATE_S,
+    }
+    # nowplaying renders and uploads per song, so it says itself when it is through
+    np_backstop = len(_np_display.STATES) * (CANNED_CHUNK_S + CANNED_DWELL_S) * 3
+    for mode in scheduler.MODES:
+        config.override(mode, "enabled", True)
+    while True:
+        for mode in scheduler.MODES:
+            _states_started = time.monotonic()
+            scheduler.trigger(mode)
+            if mode == "nowplaying":
+                log.info("states", f"{mode}, {len(_np_display.STATES)} songs at the panel's own pace")
+                try:
+                    await asyncio.wait_for(advance_canned_songs(), timeout=np_backstop)
+                except asyncio.TimeoutError:
+                    log.warn("states", "nowplaying did not get through its songs, moving on")
+            else:
+                log.info("states", f"{mode}, {spans[mode]:.0f}s")
+                await asyncio.sleep(spans[mode])
+            scheduler.untrigger(mode)
+
+
+async def run(args=None) -> None:
+    global _all_states, _offline, _states_started
+    args     = args or visualize.parse()
+    _offline = args.offline
     config.init_event(asyncio.get_running_loop())
-    asyncio.get_event_loop().run_in_executor(None, get_verse_frame)
-    np_poller.start()
+    if visualize.canned(args):
+        _all_states     = True
+        _states_started = time.monotonic()
+        use_canned_songs(args.offline)
+        asyncio.create_task(_all_states_walk())
+    elif _offline:
+        # canned everywhere, so the service still behaves without keys or a network
+        use_canned_songs(True)
+        md_display._weather = md_display._MILD
+    else:
+        asyncio.get_event_loop().run_in_executor(None, get_verse_frame)
+    if not _offline:
+        np_poller.start()
     asyncio.create_task(_nowplaying_watcher())
     asyncio.create_task(_dashboard_event_watcher())
 
@@ -374,9 +437,9 @@ async def run() -> None:
         await _wait_for_active_hour()
 
         try:
-            log.info("ble", f"connecting to {MAC_ADDRESS} ...")
+            log.info(visualize.tag(), f"connecting to {MAC_ADDRESS} ...")
             api.set_reconnect(attempting=True)
-            async with AsyncClient(_ble_target()) as client:
+            async with visualize.client(_ble_target(), args, "startup") as client:
                 api.set_connected(True)
                 api.set_reconnect()
 
@@ -395,7 +458,7 @@ async def run() -> None:
                 if need_clear:
                     async def clear_slots():
                         api.set_clearing(True)
-                        log.info("ble", "clearing slots ...")
+                        log.info(visualize.tag(), "clearing slots ...")
                         deadline = asyncio.get_running_loop().time() + 60
                         for slot in range(MAX_SLOTS):
                             if asyncio.get_running_loop().time() > deadline:
@@ -410,11 +473,11 @@ async def run() -> None:
                                 log.warn("ble", f"slot {slot} delete error: {e}, skipping")
                         clearing[0] = False
                         api.set_clearing(False)
-                        log.info("ble", "slots cleared")
+                        log.info(visualize.tag(), "slots cleared")
                     _clear_task = asyncio.create_task(clear_slots())
                 else:
                     clearing[0] = False
-                    log.info("ble", "quick reconnect, skipping slot clear")
+                    log.info(visualize.tag(), "quick reconnect, skipping slot clear")
 
                 _ever_connected = True
                 _disconnect_at = None
@@ -540,6 +603,8 @@ async def run() -> None:
                         last_brightness_sent = -1
                         brightness_asserts = 2
                         log.info("mode", f"switching to {mode} ({scheduler.source_of(mode)})")
+                        if not _all_states:
+                            visualize.label(f"live, triggered by {scheduler.source_of(mode)}", mode)
                         if mode != prev_mode:
                             async def _delayed_enter(m, ctx):
                                 await asyncio.sleep(0.5)
@@ -584,8 +649,8 @@ async def run() -> None:
                 _last_mode = None
             if _disconnect_at is None:
                 _disconnect_at = time.time()
-            log.error("ble", f"connection lost: {e}")
-            log.info("ble", f"retrying in {RECONNECT_DELAY}s ...")
+            log.error(visualize.tag(), f"connection lost: {e}")
+            log.info(visualize.tag(), f"retrying in {RECONNECT_DELAY}s ...")
             api.set_reconnect(at=time.time() + RECONNECT_DELAY)
             await asyncio.sleep(RECONNECT_DELAY)
 
@@ -596,7 +661,12 @@ def _on_sigterm(signum, frame) -> None:
 
 
 if __name__ == "__main__":
-    if "--debug" in sys.argv or config.get("expert", "debug_log", False):
+    import argparse
+    parser = argparse.ArgumentParser(parents=[visualize.flags()])
+    parser.add_argument("--debug",        action="store_true", help="verbose log")
+    args = parser.parse_args()
+
+    if args.debug or config.get("expert", "debug_log", False):
         log.set_debug(True)
     signal.signal(signal.SIGTERM, _on_sigterm)
     port   = int(os.environ.get("PORT", config.get("expert", "port", 12832)))
@@ -605,4 +675,7 @@ if __name__ == "__main__":
     threading.Thread(target=api.run, kwargs={"port": port}, daemon=True).start()
     log.info("service", f"smart pixel display {VERSION} starting, panels: {panels}")
     log.info("web", f"web ui on http://0.0.0.0:{port}")
-    asyncio.run(run())
+    try:
+        asyncio.run(run(args))
+    except KeyboardInterrupt:
+        log.info("service", "stopped by keyboard interrupt")

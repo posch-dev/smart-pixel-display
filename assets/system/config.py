@@ -64,6 +64,11 @@ def get(section: str, key: str, default=None):
     return doc.get(section, {}).get(key, default)
 
 
+def override(section: str, key: str, value) -> None:
+    # in-memory only, never written back. --all-states switches panels on this way
+    _ensure()[section][key] = value
+
+
 def get_section(section: str) -> dict:
     doc = _ensure()
     return dict(doc.get(section, {}))
