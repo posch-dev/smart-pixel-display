@@ -139,10 +139,13 @@ Supports `on_enter` and `on_exit` webhooks.
 ## Running standalone
 
 ```bash
-./.venv/bin/python panels/dashboard/main.py
-# or cycle through all display states with test data:
-./.venv/bin/python panels/dashboard/display.py --test
+./.venv/bin/python panels/dashboard/main.py              # on the display
+./.venv/bin/python panels/dashboard/main.py --visualize  # in a browser tab, no display needed
 ```
+
+`--visualize` serves the panel at `http://localhost:12833` and walks all nineteen states it
+can draw, labelled under the frame. Add `--live` for real weather and the real calendar,
+`--no-browser` to skip opening a tab. See [Flags](../../README.md#flags).
 
 ---
 

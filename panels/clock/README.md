@@ -30,8 +30,13 @@ Supports `on_enter` and `on_exit` webhooks.
 ## Running standalone
 
 ```bash
-./.venv/bin/python panels/clock/main.py
+./.venv/bin/python panels/clock/main.py              # on the display
+./.venv/bin/python panels/clock/main.py --visualize  # in a browser tab, no display needed
 ```
+
+`--visualize` serves the panel at `http://localhost:12833` and steps through five canned
+times instead of reading the clock. Add `--live` to take the real time, `--no-browser` to
+skip opening a tab. See [Flags](../../README.md#flags).
 
 ---
 

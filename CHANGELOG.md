@@ -2,7 +2,32 @@
 
 All notable changes to smart pixel display. Newest first.
 
-## v1.3.0 - unreleased
+## v1.3.1 - 2026-09-11
+
+### Added
+
+- Visualize mode: `--visualize` runs any panel, or the whole service, in a browser tab instead of on the display, and walks it through every state it can draw. The frames are the real ones, drawn by the same code and the same loops the display gets, down to the double-buffered GIF slots, so you can build a panel without the display in reach.
+  - `--live` takes real data and the API instead of the walk.
+  - `--offline` drops every outgoing call, cover art included.
+  - `--no-browser` serves the page without opening a tab.
+  - `visualize_port` in `[expert]` sets the port, 12833 by default.
+- Console tools on the service. They only print, they never draw:
+  - `--scan` lists nearby Bluetooth devices.
+  - `--clear-slots` wipes every image slot on the display.
+  - `--poll-debug` dumps what the scrobbler reports about the current track. It sits on the Now Playing panel too.
+  - `--font-preview` renders one Now Playing GIF per font into `assets/fonts/previews`.
+
+### Changed
+
+- The `test/` folder is gone. `--visualize` covers what its panel scripts did, and the rest became the flags above.
+- The dashboard's `--test` is now `--visualize`, and it covers considerably more.
+
+### Fixed
+
+- A panel no longer needs a `config.toml` to start. Without one it reads `config.example.toml`, so a fresh checkout runs as it is.
+- Ctrl-C ends the service and the standalone panels cleanly instead of printing an asyncio traceback.
+
+## v1.3.0 - 2026-09-07
 
 ### Added
 

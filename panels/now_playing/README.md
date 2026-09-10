@@ -135,8 +135,15 @@ Full-brightness variants are the same hue but at max value, for things like WLED
 ## Running standalone
 
 ```bash
-./.venv/bin/python panels/now_playing/main.py
+./.venv/bin/python panels/now_playing/main.py              # on the display
+./.venv/bin/python panels/now_playing/main.py --visualize  # in a browser tab, no display needed
+./.venv/bin/python panels/now_playing/main.py --poll-debug # console only, what the scrobbler reports
 ```
+
+`--visualize` serves the panel at `http://localhost:12833` and plays eleven canned tracks
+instead of asking the scrobbler, switching GIF slots exactly as it does on the display. Add
+`--live` for the real scrobbler, `--offline` to skip fetching cover art, `--no-browser` to
+skip opening a tab. See [Flags](../../README.md#flags).
 
 ---
 

@@ -42,8 +42,13 @@ Supports `on_enter` and `on_exit` webhooks.
 ## Running standalone
 
 ```bash
-./.venv/bin/python panels/verse_of_day/main.py
+./.venv/bin/python panels/verse_of_day/main.py              # on the display
+./.venv/bin/python panels/verse_of_day/main.py --visualize  # in a browser tab, no display needed
 ```
+
+`--visualize` serves the panel at `http://localhost:12833` and cycles five canned references
+instead of calling OurManna. Add `--live` to fetch the real verse of the day, `--no-browser`
+to skip opening a tab. See [Flags](../../README.md#flags).
 
 ---
 

@@ -164,7 +164,7 @@ Then it starts the service and prints the URL of the Web App.
 An existing `config.toml` or `.env` is never overwritten. Run the installer again to fill
 in what is missing, or `--reconfigure` to answer everything anew.
 
-| Flag | What it does |
+| Flags for the install script | What it does |
 |---|---|
 | `--yes`, `-y` | take every default, ask nothing |
 | `--reconfigure` | ask again even though the config is already there |
@@ -225,6 +225,8 @@ the dependencies in the `.venv`:
 ./.venv/bin/python panels/<panel>/main.py
 ```
 
+No display yet? Every panel runs in the browser instead, see [Flags](#flags).
+
 ### 4. Updating
 
 The service checks GitHub for a new release once a day, and the web app shows a notice
@@ -257,6 +259,38 @@ It has template variables for colors and track info
 | full brightness color variants for external devices like WLED. | etc.         |
 | etc.     |              |
 
+
+## Flags
+
+`--visualize` runs a panel in your browser instead of on the display, and walks it through
+every state it can draw. The frames are the real ones, drawn by the same code the display
+gets. Leave the tab open, it adopts the next run by itself.
+
+```bash
+./.venv/bin/python startup.py --visualize            # every panel, every state
+./.venv/bin/python startup.py --visualize --live     # real data, panels switching on their own
+```
+
+| Flag | Where | Term | Web¹ | Browser | Display | What it does |
+|---|---|:-:|:-:|:-:|:-:|---|
+| *(none)* | all | ✓ | ✓ | ✗ | ✓ | the normal run |
+| `--visualize` | all | ✓ | ✓ | ✓ | ✗ | serve the frames at `http://localhost:12833`, open a tab, walk the canned states |
+| `--live` | all | ✓ | ✓ | ✓ | ✗ | real data and the API instead of the walk |
+| `--offline` | all | ✓ | ✓ | ✓ | ✗ | no outgoing API calls at all, not even cover art |
+| `--no-browser` | all | ✓ | ✓ | ✓ | ✗ | serve the page but open no tab |
+| `--debug` | `startup.py` | ✓ | ✓ | ✗ | ✓ | verbose log, same as `debug_log` in `[expert]` |
+| `--scan` | `startup.py` | ✓ | ✗ | ✗ | ✗ | list nearby Bluetooth devices |
+| `--clear-slots` | `startup.py` | ✓ | ✗ | ✗ | ✓² | wipe every image slot on the display |
+| `--poll-debug` | `startup.py`, Now Playing | ✓ | ✗ | ✗ | ✗ | dump what the scrobbler reports about the current track |
+| `--font-preview` | `startup.py` | ✓ | ✗ | ✗ | ✗ | one Now Playing GIF per font, into `assets/fonts/previews` |
+| `--lat`, `--lon` | Dashboard | ✓ | ✓ | ✗ | ✓ | override the weather location for this run |
+
+¹ `startup.py` only, not on standalone panels.  
+² communicates with display but renders no output
+
+`--live`, `--offline` and `--no-browser` are modifiers, their ticks show the `--visualize` run
+they belong to. The visualize port is `visualize_port` in `[expert]`. Without a `config.toml`
+the panels read `config.example.toml`, so a fresh checkout runs as it is.
 
 ## REST API
 
