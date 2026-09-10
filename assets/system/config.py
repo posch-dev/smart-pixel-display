@@ -7,7 +7,8 @@ from PIL import Image
 
 import assets.system.log as log
 
-_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config.toml")
+_CONFIG_PATH  = os.path.join(os.path.dirname(__file__), "..", "..", "config.toml")
+_EXAMPLE_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config.example.toml")
 _doc: tomlkit.TOMLDocument | None = None
 _changed: asyncio.Event | None = None
 _loop: asyncio.AbstractEventLoop | None = None
@@ -37,9 +38,13 @@ async def wait_for_change(timeout: float) -> bool:
 
 
 def load() -> tomlkit.TOMLDocument:
+    # without a config.toml the template stands in, so a panel runs on a fresh checkout
     global _doc
-    with open(_CONFIG_PATH, encoding="utf-8") as f:
+    path = _CONFIG_PATH if os.path.exists(_CONFIG_PATH) else _EXAMPLE_PATH
+    with open(path, encoding="utf-8") as f:
         _doc = tomlkit.load(f)
+    if path is _EXAMPLE_PATH:
+        log.warn("config", "no config.toml, running on config.example.toml")
     return _doc
 
 
