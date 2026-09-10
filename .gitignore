@@ -47,3 +47,4 @@ panels/dashboard/.weather_cache*.json
 
 nohup.out
 *.log
+assets/fonts/previews/

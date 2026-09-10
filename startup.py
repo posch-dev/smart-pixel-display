@@ -664,7 +664,23 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(parents=[visualize.flags()])
     parser.add_argument("--debug",        action="store_true", help="verbose log")
+    parser.add_argument("--scan",         action="store_true", help="list nearby BLE devices, console only")
+    parser.add_argument("--clear-slots",  action="store_true", help="wipe every image slot on the display, console only")
+    parser.add_argument("--poll-debug",   action="store_true", help="dump what the scrobbler reports, console only")
+    parser.add_argument("--font-preview", action="store_true", help="render one nowplaying gif per font, console only")
     args = parser.parse_args()
+
+    if args.scan or args.clear_slots or args.poll_debug or args.font_preview:
+        import assets.system.tools as tools
+        if args.scan:
+            tools.scan()
+        elif args.clear_slots:
+            tools.clear_slots()
+        elif args.poll_debug:
+            tools.poll_debug()
+        else:
+            tools.font_preview()
+        sys.exit(0)
 
     if args.debug or config.get("expert", "debug_log", False):
         log.set_debug(True)
