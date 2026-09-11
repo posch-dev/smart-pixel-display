@@ -330,5 +330,7 @@ MIT, and Streamline Pixel by [Streamline](https://streamlinehq.com) under
 
 The web UI asks for Segoe UI and falls back to [Selawik](https://github.com/microsoft/Selawik),
 Microsoft's open source replacement for it, under the
-[SIL Open Font License 1.1](https://scripts.sil.org/OFL). The licence ships with the font in
-`assets/fonts/Selawik-LICENSE.txt`.
+[SIL Open Font License 1.1](https://scripts.sil.org/OFL).
+
+Every bundled typeface is credited in [assets/fonts/LICENSES.md](assets/fonts/LICENSES.md),
+with the licence text alongside the font wherever its licence asks for that.
