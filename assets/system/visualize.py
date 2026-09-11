@@ -50,7 +50,8 @@ _PAGE = """<!doctype html>
          background: #14161a; color: #c9d1d9;
          font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
   img  { width: min(1024px, 94vw); image-rendering: pixelated;
-         border: 1px solid #2a2f37; border-radius: 4px; background: #000; }
+         border: 1px solid #2a2f37; border-radius: 4px; background: #000;
+         transform: __UPRIGHT__; }
   #label  { font-size: 15px; color: #e6edf3; text-align: center; padding: 0 16px; }
   #status { font-size: 12px; color: #6e7681; }
   #status b { color: #9aa4b2; font-weight: 500; }
@@ -308,9 +309,14 @@ def serve(port: int | None = None, open_browser: bool = True, panel: str = "") -
     logging.getLogger("werkzeug").setLevel(logging.ERROR)  # no request log
     flask.cli.show_server_banner = lambda *_a, **_k: None
 
+    # the panel draws its picture the way the display hangs, so the page turns it back
+    upright = (f"scaleX({-1 if config.get('device', 'flip_horizontal') else 1})"
+               f" scaleY({-1 if config.get('device', 'flip_vertical') else 1})")
+    page = _PAGE.replace("__UPRIGHT__", upright)
+
     @app.route("/")
     def _index():
-        return Response(_PAGE, mimetype="text/html")
+        return Response(page, mimetype="text/html")
 
     @app.route("/state")
     def _state():
