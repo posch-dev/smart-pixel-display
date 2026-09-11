@@ -1,5 +1,7 @@
 .env
 /config.toml
+.update_state
+.update-*.log
 
 CLAUDE.md
 .claude/

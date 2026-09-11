@@ -48,7 +48,12 @@ _auto = False
 
 def info(text):  print(f"{GREEN}[+]{RESET} {text}")
 def warn(text):  print(f"{YELLOW}[!]{RESET} {text}")
-def fail(text):  print(f"{RED}[x]{RESET} {text}"); sys.exit(1)
+def fail(text):
+    print(f"{RED}[x]{RESET} {text}")
+    running = updates.progress()          # only an update in flight has a cover to correct
+    if running:
+        updates.mark("failed", running["target"])
+    sys.exit(1)
 
 
 def _abort():
@@ -501,13 +506,16 @@ def _update():
     if not tag:
         return 0
     starter = os.path.join(ROOT, "install.ps1" if IS_WINDOWS else "install.sh")
+    updates.mark("fetching", tag)
     if not _run(["git", "fetch", "--tags", "--quiet"]) or not _run(["git", "checkout", "--quiet", tag]):
         fail("Checkout failed, the working tree is probably not clean.")
     info(f"On {tag}, reinstalling ...")
+    updates.mark("installing", tag)
     flags   = ["--yes", "--no-autostart", "--no-start"]
     command = ["powershell", "-File", starter] + flags if IS_WINDOWS else ["bash", starter] + flags
     if not _run(command):
         fail("The reinstall failed, the code is on the new tag but the service was not restarted.")
+    updates.mark("restarting", tag)
     return _restart_service()
 
 

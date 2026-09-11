@@ -1551,40 +1551,93 @@ function showVersion() {
 
 let _runningVersion = '';
 
-// pi-hole style: the card stays hidden until the pi says there is something newer
+let _updTarget = '';
+let _updPoll   = null;
+const UPD_NOTE = 'This takes a minute or two. Reload the page if it does not come back by itself.';
+
+// pi-hole style: the cards stay hidden until the pi says there is something newer.
+// one sits under device, one under web, so whichever tab you are on tells you.
 function showUpdate() {
-  const card = document.getElementById('update-card');
-  if (!card) return;
+  const cards = document.querySelectorAll('.update-card');
   fetch('/update/status').then(r => r.json()).then(d => {
     _runningVersion = d.version || '';
-    if (!d.newer) return;
+    _updTarget      = d.latest || '';
+    // an update already running, started here or from the command line, covers the page
+    if (d.progress) { updFromMarker(d.progress); updWatch(); }
+    if (!d.newer || !cards.length) return;
     const shown = d.url ? '<a href="' + d.url + '" target="_blank" rel="noopener">' + d.latest + '</a>' : d.latest;
-    document.getElementById('update-line').innerHTML = 'Newer version ' + shown + ' available.';
-    document.getElementById('update-cmd').textContent = d.command;
-    document.getElementById('update-btn').hidden = !d.can_install;
-    card.hidden = false;
+    cards.forEach(card => {
+      card.querySelector('.update-line').innerHTML = 'Newer version ' + shown + ' available.';
+      card.querySelector('.update-cmd').textContent = d.command;
+      card.querySelector('.update-btn').hidden = !d.can_install;
+      card.hidden = false;
+    });
   }).catch(() => {});
 }
 
-function startUpdate() {
-  const btn = document.getElementById('update-btn');
-  btn.disabled = true;
-  btn.textContent = 'Installing';
-  fetch('/update', { method: 'POST' })
-    .then(r => r.json())
-    .then(d => { if (d.ok) _waitForRestart(); else btn.textContent = 'Failed'; })
-    .catch(() => { btn.textContent = 'Failed'; });
+function updPaint(percent, title, note, failed) {
+  const cover = document.getElementById('upd-cover');
+  cover.classList.toggle('failed', !!failed);
+  cover.classList.add('show');
+  document.getElementById('upd-title').textContent = title;
+  document.getElementById('upd-note').textContent  = note;
+  document.getElementById('upd-fill').style.width  = percent + '%';
 }
 
-// the pi goes away mid update, so a failed poll is the normal case here
-function _waitForRestart() {
+function updLogHint(p) {
+  return 'Look at ' + ((p && p.log) || 'the newest .update-*.log') + ' on the pi, then reload.';
+}
+
+function updFromMarker(p) {
+  if (p.failed) return updPaint(100, 'Update failed', 'The updater stopped early. ' + updLogHint(p), true);
+  if (p.stale)  return updPaint(100, 'Update did not finish', 'Nothing has happened for ten minutes. ' + updLogHint(p), true);
+  updPaint(p.percent, 'Updating' + (p.target ? ' to ' + p.target : ''), UPD_NOTE, false);
+}
+
+// the marker drives the bar while the pi answers. once it stops answering, that silence
+// is the restart, and the version changing is the only thing that means done.
+function updWatch() {
+  if (_updPoll) return;
   const started = Date.now();
-  const poll = setInterval(() => {
-    if (Date.now() - started > 300000) { clearInterval(poll); return; }
-    fetch('/version', { cache: 'no-store' }).then(r => r.json()).then(d => {
-      if (d.version && d.version !== _runningVersion) { clearInterval(poll); location.reload(); }
-    }).catch(() => {});
-  }, 5000);
+  _updPoll = setInterval(() => {
+    if (Date.now() - started > 900000) {
+      clearInterval(_updPoll); _updPoll = null;
+      updPaint(100, 'Update did not finish', 'No answer for fifteen minutes. ' + updLogHint(null), true);
+      return;
+    }
+    fetch('/update/status', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      if (d.version && _runningVersion && d.version !== _runningVersion) {
+        clearInterval(_updPoll); _updPoll = null;
+        updPaint(100, 'Updated to ' + d.version, 'Reloading.', false);
+        setTimeout(() => location.reload(), 2000);
+        return;
+      }
+      if (d.progress) updFromMarker(d.progress);
+    }).catch(() => updPaint(90, 'Restarting', UPD_NOTE, false));
+  }, 2000);
+}
+
+function startUpdate() {
+  document.getElementById('upd-ask-what').textContent =
+    'Update to ' + (_updTarget || 'the latest release') + '? The display goes dark and the service '
+    + 'restarts, which takes a minute or two.';
+  document.getElementById('upd-ask-overlay').classList.add('show');
+}
+
+function closeUpdateAsk() {
+  document.getElementById('upd-ask-overlay').classList.remove('show');
+}
+
+function confirmUpdate() {
+  closeUpdateAsk();
+  updPaint(5, 'Updating' + (_updTarget ? ' to ' + _updTarget : ''), UPD_NOTE, false);
+  fetch('/update', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) updWatch();
+      else updPaint(100, 'Update failed', 'The pi refused to start the updater.', true);
+    })
+    .catch(() => updPaint(100, 'Update failed', 'The request never reached the pi.', true));
 }
 
 function initAppearance() {

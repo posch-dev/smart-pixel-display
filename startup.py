@@ -18,6 +18,7 @@ import assets.system.log as log
 from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.api as api
+import assets.system.updates as updates
 import assets.system.webhooks as webhooks
 import assets.system.visualize as visualize
 from panels.clock.main import DISPLAY_W, DISPLAY_H, render_frame, STATES as _CLOCK_STATES
@@ -689,6 +690,7 @@ if __name__ == "__main__":
     panels = ", ".join(m for m in scheduler.MODES if config.get(m, "enabled", False)) or "none"
     api.bind_runtime(sys.modules[__name__])
     threading.Thread(target=api.run, kwargs={"port": port}, daemon=True).start()
+    updates.clear_mark()   # we are the version the update was waiting for, so the cover can go
     log.info("service", f"smart pixel display {VERSION} starting, panels: {panels}")
     log.info("web", f"web ui on http://0.0.0.0:{port}")
     try:

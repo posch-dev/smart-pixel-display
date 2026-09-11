@@ -431,6 +431,14 @@
 </div>
 
 <div id="wh-device"></div>
+
+<div class="update-note update-card" hidden>
+  <div class="update-head">
+    <span class="update-line"></span>
+    <button class="btn btn-accent btn-sm update-btn" onclick="startUpdate()">Install</button>
+  </div>
+  <div class="update-run">Or run <code class="update-cmd"></code></div>
+</div>
 </div>
 
 <div id="set-web" class="set-pane">
@@ -480,12 +488,12 @@
 </div>
 
 
-<div class="update-note" id="update-card" hidden>
+<div class="update-note update-card" hidden>
   <div class="update-head">
-    <span id="update-line"></span>
-    <button class="btn btn-accent btn-sm" id="update-btn" onclick="startUpdate()">Install</button>
+    <span class="update-line"></span>
+    <button class="btn btn-accent btn-sm update-btn" onclick="startUpdate()">Install</button>
   </div>
-  <div class="update-run">Or run <code id="update-cmd"></code></div>
+  <div class="update-run">Or run <code class="update-cmd"></code></div>
 </div>
 
 </div>
@@ -610,6 +618,23 @@
       <button class="btn btn-ghost" onclick="closeLocationPicker()">Cancel</button>
       <button class="btn btn-accent" id="loc-confirm" onclick="confirmLocation()" disabled>Confirm</button>
     </div>
+  </div>
+</div>
+</div>
+
+<div id="upd-cover">
+  <div class="upd-head"><span class="upd-spin"></span><span id="upd-title">Updating</span></div>
+  <div class="upd-bar"><i id="upd-fill"></i></div>
+  <div class="upd-note" id="upd-note">This takes a minute or two. Reload the page if it does not come back by itself.</div>
+</div>
+
+<div id="upd-ask-overlay" class="modal-overlay" onclick="if(event.target===this)closeUpdateAsk()">
+<div class="modal">
+  <div class="modal-title">Install update</div>
+  <div class="row"><div class="row-left"><div class="row-sub" id="upd-ask-what"></div></div></div>
+  <div style="padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
+    <button class="btn btn-ghost" onclick="closeUpdateAsk()">Cancel</button>
+    <button class="btn btn-accent" onclick="confirmUpdate()">Install</button>
   </div>
 </div>
 </div>
