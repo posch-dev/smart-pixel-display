@@ -626,20 +626,21 @@ async function pressEnd(mode, tile) {
 let _bpFullAnchor = null;
 
 // the preview is moved, never copied, because the renderers address it by id
+// the whole flipper travels, not just the front face, or enlarging would tear the tile apart
 function openBlueprintFull() {
-  const bp = document.getElementById('home-blueprint');
+  const tile = document.getElementById('home-flip');
   const slot = document.getElementById('bp-full-slot');
-  if (!bp || !slot) return;
-  _bpFullAnchor = bp.nextElementSibling;
-  slot.appendChild(bp);
+  if (!tile || !slot) return;
+  _bpFullAnchor = tile.nextElementSibling;
+  slot.appendChild(tile);
   document.getElementById('bp-full-overlay').classList.add('show');
 }
 
 function closeBlueprintFull() {
-  const bp = document.getElementById('home-blueprint');
+  const tile = document.getElementById('home-flip');
   const pane = document.querySelector('#tab-home .pane-inner');
   document.getElementById('bp-full-overlay').classList.remove('show');
-  if (bp && pane) pane.insertBefore(bp, _bpFullAnchor);
+  if (tile && pane) pane.insertBefore(tile, _bpFullAnchor);
 }
 
 function pollHome() {
@@ -811,9 +812,71 @@ function _reconcileTriggerState() {
   });
 }
 
+let _homeFlipped = false;
+let _vizEntered  = false;
+
+function toggleHomeFlip(event) {
+  if (event && event.target.closest('#bp-full-btn')) return;
+  setHomeFlip(!_homeFlipped);
+}
+
+function _liveReachable() {
+  return !_liveBlockedBy();
+}
+
+// empty when the mirror can show something, otherwise which of the two reasons it is
+function _liveBlockedBy() {
+  if (!statusData) return 'nolink';
+  if (!statusData.connected) return 'nolink';
+  return statusData.display_on ? '' : 'off';
+}
+
+// the lean follows the pointer on both faces, the turn axis is whatever the lean was on the click
+function homeFlipAim(event) {
+  const box = document.getElementById('home-flip');
+  if (!box) return;
+  const middle = box.getBoundingClientRect().left + box.offsetWidth / 2;
+  box.style.setProperty('--flip-lean', event.clientX < middle ? -1 : 1);
+}
+
+// nobody hovers on a phone, so the tile says once on load that it can be turned
+function hintHomeFlip() {
+  const box = document.getElementById('home-flip');
+  if (!box) return;
+  box.classList.add('shake');
+  setTimeout(() => box.classList.remove('shake'), 1000);
+}
+
+function setHomeFlip(on) {
+  const wrap = document.getElementById('home-flip');
+  if (wrap) wrap.classList.remove('shake');   // the hint must not fight the turn
+  if (wrap && on) wrap.style.setProperty('--flip-turn', wrap.style.getPropertyValue('--flip-lean') || 1);
+  const face = document.getElementById('home-live');
+  if (!wrap || !face) return;
+  _homeFlipped = on;
+  wrap.classList.toggle('flipped', on);
+  setCookie('spd_face', on ? 'display' : 'twin');
+  if (!on) return liveStop();
+  if (!face.children.length) face.innerHTML = liveFaceHtml();
+  liveStart(face);
+  liveShowOff(_liveBlockedBy());
+}
+
+// a visualize run lands on the live display straight away, and none of it touches the config
+function enterVisualizer() {
+  _vizEntered = true;
+  applyTwin(true);
+  setHomeFlip(true);
+  openBlueprintFull();
+}
+
 async function loadStatus() {
   try {
     statusData = await fetch('/status').then(r => r.json());
+    applyVisualizerMark(!!statusData.visualize);
+    if (statusData.visualize && !_vizEntered) enterVisualizer();
+    document.body.classList.toggle('display-off', !_liveReachable());
+    if (_homeFlipped) liveShowOff(_liveBlockedBy());
     _linkUp   = !!statusData.connected;
     _retrying = !!statusData.reconnecting;
     _retryAt  = statusData.reconnect_in_s != null ? Date.now() + statusData.reconnect_in_s * 1000 : 0;
@@ -1527,6 +1590,8 @@ async function init() {
     await loadStatus();
     _pollTimer = setInterval(_tick, POLL_ACTIVE);
     setInterval(pollHome, 1000);
+    setTimeout(hintHomeFlip, 700);
+    if (getCookie('spd_face') === 'display') setHomeFlip(true);
     showVersion();
     showUpdate();
     tickHeaderClock();
@@ -1654,6 +1719,9 @@ function flipToggle(key) {
   const on = !el.classList.contains('on');
   el.classList.toggle('on', on);
   save('device', key, on);
+  cfg.device = cfg.device || {};
+  cfg.device[key] = on;
+  liveApplyUpright();   // the mirror has to turn back the other way now
 }
 
 function initHexLabels() {

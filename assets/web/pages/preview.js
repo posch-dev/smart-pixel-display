@@ -582,6 +582,7 @@ async function initPreview() {
   applyPvColOn();
   applyPvColors();
   buildPvColors();
+  fetch('/status').then(r => r.json()).then(s => applyVisualizerMark(!!s.visualize)).catch(() => {});
   cfg = await fetch('/config').then(r => r.json());
   adoptPvPanels();
   applyPvPanels();

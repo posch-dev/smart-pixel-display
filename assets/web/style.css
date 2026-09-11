@@ -412,6 +412,14 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 #upd-cover.failed .upd-spin { display: none; }
 #upd-cover.failed .upd-bar > i { background: var(--red); }
 
+#visualizer-mark {
+  position: fixed; inset: 0; z-index: 900; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  font-size: 12vw; font-weight: 700; letter-spacing: .1em; line-height: 2.4;
+  color: color-mix(in srgb, var(--accent) 7%, transparent);
+  transform: rotate(-24deg); text-transform: lowercase; white-space: nowrap;
+}
+
 #toast {
   position: fixed; bottom: 20px; right: 20px;
   background: var(--card); border: 1px solid var(--border);
@@ -639,9 +647,79 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
   color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s, color .15s;
 }
 #bp-full-btn .ico { width: 14px; height: 14px; }
-.blueprint:hover #bp-full-btn, #bp-full-btn:focus-visible { opacity: 1; }
+.flip:hover #bp-full-btn, #bp-full-btn:focus-visible { opacity: 1; }
 #bp-full-btn:hover { color: var(--text); border-color: var(--accent); }
 @media (hover: none) { #bp-full-btn { opacity: 1; } }
+/* The tile turns over like a sheet of paper. This has to sit after .blueprint, or that rule
+   wins on position and the back face stays in the flow, doubling the tile's height. */
+/* clip, never hidden: a turned face reaches past the box and any scroll box around it is the
+   whole phone page bouncing. the margin lets the lean and the turn still paint over the edge. */
+.flip { position: relative; perspective: 1100px; overflow: clip; overflow-clip-margin: 16px; }
+.flip-faces {
+  position: relative; transform-style: preserve-3d;
+  transition: transform .55s cubic-bezier(.2, .7, .3, 1);
+}
+.flip-front, .flip-back { backface-visibility: hidden; }
+.flip-back { position: absolute; inset: 0; transform: rotateY(180deg); }
+
+/* The tilt is held while the pointer is there. A keyframe animation on transform would
+   override the flip, which made the click jump instead of turning. --flip-dir comes from the
+   side the pointer is on, so it leans and then turns the way you came from. Order matters:
+   equal specificity, so the flipped rules have to sit after the hover one. */
+/* two variables, not one: --flip-turn is the axis the click locked in, --flip-lean follows
+   the pointer even while the back is showing. The lean flips sign when turned, because then
+   you are looking at the back of it and a positive rotation leans the other way. */
+.flip { --flip-turn: 1; --flip-lean: 1; }
+.flip:hover .flip-faces         { transform: rotateY(calc(var(--flip-lean) * 6deg)); }
+.flip.flipped .flip-faces       { transform: rotateY(calc(var(--flip-turn) * 180deg)); }
+.flip.flipped:hover .flip-faces { transform: rotateY(calc(var(--flip-turn) * 180deg - var(--flip-lean) * 6deg)); }
+
+/* nobody hovers on a phone, so it says once on load that it can be turned */
+.flip.shake .flip-faces         { animation: flip-shake .95s ease-in-out; }
+.flip.flipped.shake .flip-faces { animation: flip-shake-back .95s ease-in-out; }
+@keyframes flip-shake {
+  25%  { transform: rotateY(6deg); }
+  65%  { transform: rotateY(-6deg); }
+  100% { transform: rotateY(0deg); }
+}
+/* the hint has to wobble around whichever side is showing, absolute angles would turn it back */
+@keyframes flip-shake-back {
+  25%  { transform: rotateY(calc(var(--flip-turn) * 180deg + 6deg)); }
+  65%  { transform: rotateY(calc(var(--flip-turn) * 180deg - 6deg)); }
+  100% { transform: rotateY(calc(var(--flip-turn) * 180deg)); }
+}
+
+.live-face { background: #000; }
+.live-face .live-shot, .live-face .live-frozen {
+  width: 100%; height: auto; image-rendering: pixelated; display: block;
+}
+.live-face .live-label {
+  position: absolute; left: 0; right: 0; bottom: 2cqw; text-align: center;
+  font-size: 3cqw; color: var(--muted-hi); text-shadow: 0 0 .6cqw #000;
+}
+.live-face .live-off {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: .8cqw; text-align: center;
+}
+.live-face .live-off b    { font-size: 4.4cqw; color: var(--muted-hi); }
+.live-face .live-off span { font-size: 3cqw; color: var(--muted); }
+/* every display above outranks the [hidden] attribute on its own, and ties go to whoever
+   comes last, so this has to stay at the bottom of the block */
+.live-face [hidden] { display: none; }
+
+/* Nothing is live while the display is dark, so nothing should wear a live colour. Both
+   colours come from one pair of properties, so greying those covers the panel icons, the
+   home tiles, the mode button and the header gradient at once, held ones included. */
+body.display-off { --auto-col: var(--muted); --manual-col: var(--muted); }
+/* the icons and tiles have to look exactly like the ones that are not live, not merely
+   greyer: muted is lighter than the border colour, and a held tile carries a tint as well */
+body.display-off .panel-ico.active,
+body.display-off .panel-ico.manual,
+body.display-off .pgrid-tile.active,
+body.display-off .pgrid-tile.held {
+  animation: none; border-color: var(--border); color: var(--muted); background: var(--card);
+}
+
 /* the tools sit on the dimmed ground, never on top of the panel */
 #bp-full-tools {
   position: absolute; top: 14px; right: 14px; z-index: 1; display: flex; gap: 8px;

@@ -220,6 +220,7 @@ async def _clock_task(client: AsyncClient, ble_lock: asyncio.Lock, clearing: lis
             colon_on = int(time.time() / blink_interval) % 2 == 0
         triple = (hour, minute, colon_on)
         if triple != last_sent:
+            visualize.note_clock(f"{hour}:{minute}", colon_on)
             frame = render_frame(hour, minute, colon_on)
             if clearing[0]:
                 frame = _add_clearing_pixel(frame)
@@ -440,7 +441,7 @@ async def run(args=None) -> None:
         try:
             log.info(visualize.tag(), f"connecting to {MAC_ADDRESS} ...")
             api.set_reconnect(attempting=True)
-            async with visualize.client(_ble_target(), args, "startup") as client:
+            async with visualize.client(_ble_target(), args, "startup", own_page=False) as client:
                 api.set_connected(True)
                 api.set_reconnect()
 
@@ -656,6 +657,18 @@ async def run(args=None) -> None:
             await asyncio.sleep(RECONNECT_DELAY)
 
 
+def _open_web_ui(port: int) -> None:
+    # the service has no page of its own any more, the web app shows the frames
+    url = f"http://localhost:{port}"
+    for _ in range(20):
+        if api.seen_recently():
+            log.info("visualize", "a tab is already on the web ui, not opening another")
+            return
+        time.sleep(0.05)
+    log.info("visualize", f"opening the web ui at {url}, the twin on home shows the display")
+    visualize.open_tab(url)
+
+
 def _on_sigterm(signum, frame) -> None:
     log.info("service", "sigterm received, shutting down")
     sys.exit(0)
@@ -693,6 +706,8 @@ if __name__ == "__main__":
     updates.clear_mark()   # we are the version the update was waiting for, so the cover can go
     log.info("service", f"smart pixel display {VERSION} starting, panels: {panels}")
     log.info("web", f"web ui on http://0.0.0.0:{port}")
+    if args.visualize and not args.no_browser:
+        _open_web_ui(port)
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:

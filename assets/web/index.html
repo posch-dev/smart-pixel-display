@@ -525,10 +525,15 @@
 <div id="tab-home" class="tab-pane active">
 <div class="pane-inner">
 
-<div class="blueprint" id="home-blueprint">
-  <div class="blueprint-inner" id="blueprint-content"></div>
-  <div class="dot-raster"></div>
-  <button id="bp-full-btn" onclick="openBlueprintFull()" title="Fullscreen">
+<div class="flip" id="home-flip" onclick="toggleHomeFlip(event)" onmousemove="homeFlipAim(event)" title="Click to turn it over">
+  <div class="flip-faces" id="home-faces">
+    <div class="blueprint flip-front" id="home-blueprint">
+      <div class="blueprint-inner" id="blueprint-content"></div>
+      <div class="dot-raster"></div>
+    </div>
+    <div class="blueprint flip-back live-face" id="home-live"></div>
+  </div>
+  <button id="bp-full-btn" onclick="openBlueprintFull(); event.stopPropagation()" title="Fullscreen">
     <svg class="ico"><use href="#ico-scale"/></svg>
   </button>
 </div>
@@ -657,6 +662,7 @@
 <script src="vendor/mp4-muxer.js"></script>
 <script src="vendor/webm-muxer.js"></script>
 <script src="lib/blueprint.js"></script>
+<script src="lib/live.js"></script>
 <script src="lib/export-render.js"></script>
 <script src="lib/export-gif.js"></script>
 <script src="lib/export.js"></script>

@@ -868,3 +868,15 @@ function _bpText(id, text) {
   const el = document.getElementById(id);
   if (el && el.textContent !== text) el.textContent = text;
 }
+
+
+// over everything, wherever you navigate, so a visualize run is never mistaken for the real box
+function applyVisualizerMark(on) {
+  const mark = document.getElementById('visualizer-mark');
+  if (on === !!mark) return;
+  if (!on) return mark.remove();
+  const made = document.createElement('div');
+  made.id = 'visualizer-mark';
+  made.textContent = '[visualizer]';
+  document.body.appendChild(made);
+}

@@ -4,7 +4,7 @@ import time
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, send_from_directory, make_response
+from flask import Flask, request, jsonify, send_from_directory, make_response, Response
 from werkzeug.exceptions import HTTPException
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -19,6 +19,7 @@ from assets.system.version import VERSION
 import assets.system.scheduler as scheduler
 import assets.system.webhooks as webhooks
 import assets.system.updates as updates
+import assets.system.visualize as visualize
 import calendar_store
 import weather as weather_mod
 
@@ -72,6 +73,13 @@ def _rt():
         import startup
         _runtime = startup
     return _runtime
+
+
+_seen_at = 0.0
+
+
+def seen_recently(within_s: float = 3.0) -> bool:
+    return bool(_seen_at) and time.time() - _seen_at < within_s
 
 
 def set_connected(connected: bool) -> None:
@@ -136,6 +144,8 @@ def web_static(filename):
 
 @app.get("/status")
 def get_status():
+    global _seen_at
+    _seen_at = time.time()
     return jsonify({
         **scheduler.get_status(),
         "connected":        _ble_connected,
@@ -144,7 +154,24 @@ def get_status():
         "reconnecting":     _reconnecting,
         "clearing":         _clearing,
         "in_active_hours":  _in_active_hours(),
+        **visualize.mode(),
     }), 200
+
+
+@app.get("/live/state")
+def live_state():
+    global _seen_at
+    _seen_at = time.time()
+    return jsonify(visualize.live_state()), 200
+
+
+@app.get("/live/frame")
+def live_frame():
+    # variant colon_on or colon_off hands out the clock pair, the export needs both
+    data, mime = visualize.frame(request.args.get("variant", ""))
+    if not data:
+        return jsonify({"error": "nothing on the display yet"}), 404
+    return Response(data, mimetype=mime, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/config")
