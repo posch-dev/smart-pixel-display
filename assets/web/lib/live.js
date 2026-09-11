@@ -17,7 +17,6 @@ function livePaused()  { return _livePaused; }
 function liveFaceHtml() {
   return '<img class="live-shot" alt="" onerror="liveBroken(this)">'
        + '<canvas class="live-frozen" hidden></canvas>'
-       + '<div class="live-label"></div>'
        + '<div class="live-off" hidden><b></b><span>No live view of the display</span></div>';
 }
 
@@ -128,14 +127,6 @@ function _liveTick() {
   if (_livePaused) return;
   if (_liveFaces.some(face => face.offsetParent === null)) return;   // not on screen, not worth a byte
   fetch('/live/state', { cache: 'no-store' }).then(r => r.json()).then(state => {
-    _liveFaces.forEach(face => {
-      const label = face.querySelector('.live-label');
-      if (label) {
-        const show = state.visualize && state.canned && state.label;
-        label.textContent = show ? state.label : '';
-        label.hidden = !show;
-      }
-    });
     if (state.panel === 'clock') return _liveClock(state);
     _liveStopBlink();
     _liveKey = '';

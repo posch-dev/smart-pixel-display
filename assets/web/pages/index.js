@@ -862,6 +862,14 @@ function setHomeFlip(on) {
   liveShowOff(_liveBlockedBy());
 }
 
+// the canned walk names the state it is on, the tiles are where it belongs
+function paintVizLabel(state) {
+  const el = document.getElementById('viz-label');
+  const show = state.visualize && state.canned && state.label;
+  el.textContent = show ? state.label : '';
+  el.hidden = !show;
+}
+
 // a visualize run lands on the live display straight away, and none of it touches the config
 function enterVisualizer() {
   _vizEntered = true;
@@ -874,6 +882,7 @@ async function loadStatus() {
   try {
     statusData = await fetch('/status').then(r => r.json());
     applyVisualizerMark(!!statusData.visualize);
+    paintVizLabel(statusData);
     if (statusData.visualize && !_vizEntered) enterVisualizer();
     document.body.classList.toggle('display-off', !_liveReachable());
     if (_homeFlipped) liveShowOff(_liveBlockedBy());

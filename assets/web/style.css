@@ -693,9 +693,8 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 .live-face .live-shot, .live-face .live-frozen {
   width: 100%; height: auto; image-rendering: pixelated; display: block;
 }
-.live-face .live-label {
-  position: absolute; left: 0; right: 0; bottom: 2cqw; text-align: center;
-  font-size: 3cqw; color: var(--muted-hi); text-shadow: 0 0 .6cqw #000;
+#viz-label {
+  margin-top: 10px; text-align: center; font-size: 13px; color: var(--muted-hi);
 }
 .live-face .live-off {
   position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -1132,7 +1131,7 @@ body.display-off .pgrid-tile.held {
   /* the preview and the tiles share one screen, nothing scrolls */
   #tab-home .pane-inner {
     height: calc(100dvh - var(--hdr-h, 55px) - var(--tabbar-h, 36px));
-    display: grid; grid-template-rows: auto 1fr; min-height: 0; gap: 12px;
+    display: grid; grid-template-rows: auto 1fr auto; min-height: 0; gap: 12px;
   }
   #tab-home .panel-grid { min-height: 0; grid-auto-rows: 1fr; }
   #tab-home .pgrid-tile { aspect-ratio: auto; min-height: 0; }

@@ -154,7 +154,7 @@ def get_status():
         "reconnecting":     _reconnecting,
         "clearing":         _clearing,
         "in_active_hours":  _in_active_hours(),
-        **visualize.mode(),
+        **visualize.live_state(),
     }), 200
 
 
