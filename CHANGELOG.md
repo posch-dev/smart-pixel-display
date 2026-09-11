@@ -2,6 +2,36 @@
 
 All notable changes to smart pixel display. Newest first.
 
+## v1.3.2 - 2026-09-11
+
+### Added
+
+- The live display in the web app: the home tile turns over like a sheet of paper and shows the frames the display was really given, the same pictures over BLE, not a drawing of them. It keeps the side you left it on, says whether the display is off or nothing is connected rather than showing a dead picture, and every live colour on the page goes grey while the display is dark.
+  - The clock blinks its colon locally at the configured rate, so a second of network is not spent on it.
+  - Pause holds the picture, and the Pi keeps the frames a paused tab is holding for as long as that tab is open, so the export writes what you stopped on and not what the display has moved on to.
+- The Twin Viewer works the same way: a Source row at the top of the drawer stands it on the twin or on the display, and the editor goes behind glass while the display is showing, because nothing on the real panel can be styled from here.
+  - The panel square under it drives the display straight from the viewer: hold one panel, or hand it back to the scheduler with the arrow.
+- Export takes the display as its source as well as the twin: any panel as the picture it is showing, the clock as its blinking pair, a track as the chunk it is looping or the whole song as one film. At the panel's own 128 pixels or scaled up through the width dropdown, nearest neighbour, no smoothing.
+  - GIF, MP4 and WebM out of the display frames on any browser that can take a GIF apart, which today means Chrome and Edge. Elsewhere the file goes out as the panel wrote it and the Format row says so.
+- `--visualize` on the service now opens the web app itself instead of a page of its own, with the tile enlarged and already turned to the display, a `[visualizer]` watermark over every page, and the canned state named under the panel tiles. None of it is written to the config.
+- Update progress: the Install button asks before it starts, and the page is then covered for as long as the update runs, with a progress bar that follows the real phases rather than a spinner that tells you nothing.
+  - A reload while one runs lands back on that screen.
+  - An update started from the command line shows it too, to anyone with the page open.
+  - The page comes back by itself once the new version answers.
+- The update notice sits under Settings > Device as well as Settings > Web. An update is about the box, and that is the tab where the box is configured.
+- Selawik, Microsoft's open source stand-in for Segoe UI, so Linux gets the typeface the web UI was drawn with. SIL OFL 1.1, three weights, 14 KB each.
+- Every bundled typeface is credited in `assets/fonts/LICENSES.md`, with the licence text beside the fonts whose licence asks for it.
+
+### Changed
+
+- An update installs its dependencies once instead of twice. On a Pi Zero that is most of the waiting.
+
+### Fixed
+
+- The scrobbler polled Last.fm even with no keys in `.env` and with Now Playing switched off, which buried the log under the same rejection a couple of times a second. It now idles until there is something to ask for.
+- The page a standalone panel opens showed its frames the way the panel wrote them, so on a display that hangs mirrored it was the only view in the project standing on its head.
+- Whatever the updater printed was thrown away, so a failed update left nothing behind to work out why. Every update writes its own log beside `config.toml` now, named for the two versions it moves between, and the five newest are kept.
+
 ## v1.3.1 - 2026-09-11
 
 ### Added

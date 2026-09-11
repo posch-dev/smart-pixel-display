@@ -29,6 +29,7 @@ playing, and what is on your calendar. You can also switch to panels manually.
 
 - **Web application:** Control the display, watch it live and change settings
 - **The Twin:** a looksmaxxed live preview of the display in your browser
+- **The live display:** turn the Twin over and watch the actual frames the panel sent over Bluetooth, and export those too
 - **Twin Viewer & Editor:**
   - **Full Screen Viewer:** View "The Twin" in Full Screen
   - **Editor:** Customize everything about the pretty live preview of your Display (a.k.a "The Twin")
@@ -105,6 +106,14 @@ that offers more customization and export settings.
 If you do not want "The Twin" on the Home tab,
 you can disable it in the Settings tab of the Web Application.
 
+### The other side
+
+The Twin is a drawing of the panel. Behind it sits the panel itself:
+click the tile and it turns over like a sheet of paper, showing the frames
+the display was really handed.
+
+
+
 ## Twin Viewer & Editor
 
 The Twin on a page of its own, made for a big screen like a second monitor.
@@ -115,6 +124,7 @@ You get there by enlarging the Twin on the Home tab, or
 from *Settings -> Web -> Twin Viewer & Editor*, or straight at `/preview`.
 
 - **Fullscreen**: nothing but the panel, as big as the screen allows
+- **Source**: stand the stage on the Twin or on the real display.
 - **Preview**: follow the live display or choose a specific panel
 - **Full customization**: Customize the Color or Hide any element on a Panel.
 - **Export:** Save Screenshots or Animations of "The Twin" in various formats in up to 4K Resolution. Perfect for social media!
@@ -266,6 +276,10 @@ It has template variables for colors and track info
 every state it can draw. The frames are the real ones, drawn by the same code the display
 gets. Leave the tab open, it adopts the next run by itself.
 
+On the service it opens the web app itself at `http://localhost:12832`, with the Twin turned
+over to the display side, so you get the whole UI around the frames instead of a bare page.
+A standalone panel has no web app to open, so it serves its own page at `http://localhost:12833`.
+
 ```bash
 ./.venv/bin/python startup.py --visualize            # every panel, every state
 ./.venv/bin/python startup.py --visualize --live     # real data, panels switching on their own
@@ -274,7 +288,7 @@ gets. Leave the tab open, it adopts the next run by itself.
 | Flag | Where | Term | Web¹ | Browser | Display | What it does |
 |---|---|:-:|:-:|:-:|:-:|---|
 | *(none)* | all | ✓ | ✓ | ✗ | ✓ | the normal run |
-| `--visualize` | all | ✓ | ✓ | ✓ | ✗ | serve the frames at `http://localhost:12833`, open a tab, walk the canned states |
+| `--visualize` | all | ✓ | ✓ | ✓ | ✗ | walk the canned states and open a tab: the web app on `12832` from the service, the panel's own page on `12833` standalone |
 | `--live` | all | ✓ | ✓ | ✓ | ✗ | real data and the API instead of the walk |
 | `--offline` | all | ✓ | ✓ | ✓ | ✗ | no outgoing API calls at all, not even cover art |
 | `--no-browser` | all | ✓ | ✓ | ✓ | ✗ | serve the page but open no tab |
@@ -289,7 +303,8 @@ gets. Leave the tab open, it adopts the next run by itself.
 ² communicates with display but renders no output
 
 `--live`, `--offline` and `--no-browser` are modifiers, their ticks show the `--visualize` run
-they belong to. The visualize port is `visualize_port` in `[expert]`. Without a `config.toml`
+they belong to. The port of the standalone page is `visualize_port` in `[expert]`, the web app
+keeps `port`. Without a `config.toml`
 the panels read `config.example.toml`, so a fresh checkout runs as it is.
 
 ## REST API
@@ -306,6 +321,9 @@ GET    /calendar               - list all calendar events
 DELETE /calendar               - clear all calendar events
 POST   /dashboard/trigger      - manually trigger dashboard
 GET    /dashboard/status       - current dashboard data (weather + calendar)
+GET    /live/state             - what the display is showing: panel, frame version, label
+GET    /live/frame             - the frame the display was last given, as GIF
+GET    /live/chunk             - one kept chunk of a track, upright and scaled
 GET    /config                 - full config dump
 POST   /config/{section}/{key} - update a config value: {"value": ...}
 ```

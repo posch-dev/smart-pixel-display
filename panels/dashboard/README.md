@@ -145,7 +145,7 @@ Supports `on_enter` and `on_exit` webhooks.
 
 `--visualize` serves the panel at `http://localhost:12833` and walks all nineteen states it
 can draw, labelled under the frame. Add `--live` for real weather and the real calendar,
-`--no-browser` to skip opening a tab. See [Flags](../../README.md#flags).
+`--no-browser` to skip opening a tab. The page turns the frames the way the display hangs, so `flip_horizontal` and `flip_vertical` show here too. See [Flags](../../README.md#flags).
 
 ---
 

@@ -143,7 +143,7 @@ Full-brightness variants are the same hue but at max value, for things like WLED
 `--visualize` serves the panel at `http://localhost:12833` and plays eleven canned tracks
 instead of asking the scrobbler, switching GIF slots exactly as it does on the display. Add
 `--live` for the real scrobbler, `--offline` to skip fetching cover art, `--no-browser` to
-skip opening a tab. See [Flags](../../README.md#flags).
+skip opening a tab. The page turns the frames the way the display hangs, so `flip_horizontal` and `flip_vertical` show here too. See [Flags](../../README.md#flags).
 
 ---
 

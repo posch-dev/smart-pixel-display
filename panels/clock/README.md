@@ -36,7 +36,7 @@ Supports `on_enter` and `on_exit` webhooks.
 
 `--visualize` serves the panel at `http://localhost:12833` and steps through five canned
 times instead of reading the clock. Add `--live` to take the real time, `--no-browser` to
-skip opening a tab. See [Flags](../../README.md#flags).
+skip opening a tab. The page turns the frames the way the display hangs, so `flip_horizontal` and `flip_vertical` show here too. See [Flags](../../README.md#flags).
 
 ---
 
