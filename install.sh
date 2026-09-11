@@ -8,8 +8,10 @@ info()  { echo -e "\033[0;32m[+]\033[0m $1"; }
 warn()  { echo -e "\033[1;33m[!]\033[0m $1"; }
 error() { echo -e "\033[0;31m[x]\033[0m $1"; exit 1; }
 
+UPDATE_MODE=0
 for arg in "$@"; do
     [ "$arg" = "--fresh" ] && rm -rf "$VENV_DIR" && info "Removed the old venv."
+    [ "$arg" = "--update" ] && UPDATE_MODE=1
 done
 
 command -v python3 >/dev/null 2>&1 || error "python3 not found. Install it first (e.g. sudo apt install python3)."
@@ -33,10 +35,16 @@ else
     python3 -m venv "$VENV_DIR"
 fi
 
-info "Installing dependencies ..."
-"$VENV_DIR/bin/pip" install --upgrade pip -q
-"$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt" -q
-info "Dependencies installed."
+# --update only has to get the updater running. It checks out the new tag and calls this
+# script again, and that run installs the requirements the new tag actually asks for.
+if [ "$UPDATE_MODE" = 1 ] && "$VENV_DIR/bin/python" -c "import tomlkit, PIL" >/dev/null 2>&1; then
+    info "Venv already runs the updater, dependencies follow after the checkout."
+else
+    info "Installing dependencies ..."
+    "$VENV_DIR/bin/pip" install --upgrade pip -q
+    "$VENV_DIR/bin/pip" install -r "$REPO_DIR/requirements.txt" -q
+    info "Dependencies installed."
+fi
 
 cd "$REPO_DIR"
 exec "$VENV_DIR/bin/python" -m assets.system.installer "$@"
