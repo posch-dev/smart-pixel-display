@@ -1,6 +1,3 @@
-// The back of the twin tile: the frames the panel really sent, not a redrawing of them.
-// Nothing is fetched until something asks, so a tile that is not flipped costs nothing.
-
 const LIVE_POLL_MS = 400;
 
 // one tab is one viewer, and the poll is its heartbeat: the pi holds the chunk gifs of a

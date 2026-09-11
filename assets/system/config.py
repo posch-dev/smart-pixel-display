@@ -1,5 +1,3 @@
-# Central config, reads and writes config.toml at the repo root while preserving comments.
-
 import asyncio
 import os
 import tomlkit

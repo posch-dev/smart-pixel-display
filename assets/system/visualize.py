@@ -1,5 +1,3 @@
-# Runs a panel without the display: the frames it would send over BLE land in a browser tab.
-
 import argparse
 import asyncio
 import binascii

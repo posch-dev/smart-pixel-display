@@ -1,7 +1,3 @@
-// The preview on a page of its own. It starts from what the dashboard saved in its
-// cookies and overrides from there for as long as the page is open. Nothing is kept:
-// a reload lands where opening it fresh from the dashboard lands.
-
 const PV_MODES = ['clock', 'verse_of_day', 'nowplaying', 'dashboard'];
 const PV_LABELS = {clock: 'Clock', verse_of_day: 'Verse', nowplaying: 'NowPlaying', dashboard: 'Dashboard'};
 
@@ -14,7 +10,7 @@ let pv = {source: 'twin', trig: null, follow: 'live', theme: null, accent: null,
           np: [{auto: true, hex: DEFAULT_ACCENT}, {auto: true, hex: DEFAULT_ACCENT}],
           col: {}};
 
-// not saved on purpose, a page opened tomorrow should not still hold yesterday's song
+// per tab and no longer: a reload comes back running, not holding yesterday's song
 let _pvFrozen = false;
 let _pvActive = null;
 let _pvDashLayout = null;

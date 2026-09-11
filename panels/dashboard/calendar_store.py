@@ -1,5 +1,3 @@
-# In-memory store for calendar events received from the iPhone Shortcut.
-
 import math
 import re
 from datetime import datetime, timedelta

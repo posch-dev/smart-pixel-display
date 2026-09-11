@@ -1,5 +1,3 @@
-# Console-only helpers that used to live in test/. No display, no browser, they just print.
-
 import asyncio
 import os
 import sys

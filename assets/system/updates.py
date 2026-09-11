@@ -1,5 +1,3 @@
-# Asks github once a day whether a newer release is out, and starts the updater on request.
-
 import glob
 import json
 import os

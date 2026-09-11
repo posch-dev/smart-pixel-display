@@ -1,6 +1,3 @@
-// The gif side of the export. gifenc quantises and packs, this keeps the palette pass
-// apart from the frame writing so a long film never has to be held whole.
-
 const GIF_SAMPLE_PIXELS = 40000;
 
 // one table for the whole file: a palette per frame costs more than it buys, the panel

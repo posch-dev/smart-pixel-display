@@ -1,7 +1,3 @@
-// The export dialog. It builds its own markup so both the dashboard and the preview
-// page get the same one, pulls a fresh reading from /home, and hands the scene to
-// render.js. Nothing here runs on the live clock, every frame is drawn for a time.
-
 const EX_WIDTHS = [600, 720, 1080, 1280, 1440, 1920, 2160, 2560, 3840, 4096];
 const EX_ANIMATED = ['nowplaying', 'clock', 'dashboard'];
 const EX_VIDEO_FMTS = ['webm', 'mp4'];

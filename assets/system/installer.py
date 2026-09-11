@@ -1,5 +1,3 @@
-# Interactive setup. install.sh and install.ps1 build the venv and then hand over here.
-
 import argparse
 import asyncio
 import getpass

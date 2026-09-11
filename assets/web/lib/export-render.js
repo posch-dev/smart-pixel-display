@@ -1,10 +1,3 @@
-// Draws the same panel the preview shows, but into an op list instead of the DOM.
-// Two backends read that list, one writes SVG, one paints a canvas, so PNG, GIF and
-// video all come out of the same layout as the vector export.
-//
-// User space is 1000 by 250, which is the 4:1 tile at ten units per cqw. Nothing in
-// here reads the clock: a frame is drawn for the time it is handed.
-
 const R_W = 1000, R_H = 250, CQ = 10, R_PAD = 3.5 * CQ;
 const R_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Selawik', sans-serif";
 const R_SEG  = "'SevenSegment', ui-monospace, monospace";

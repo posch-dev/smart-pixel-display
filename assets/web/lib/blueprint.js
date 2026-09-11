@@ -1,6 +1,3 @@
-// Everything that draws the live preview. Loaded before script.js and shared with
-// the standalone preview page, so nothing in here may touch the settings ui.
-
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function setCookie(name, value) {

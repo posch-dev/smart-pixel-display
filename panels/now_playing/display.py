@@ -1,5 +1,3 @@
-# 128×32: 32px cover | 60px scrolling text | 32px animated visualizer. Rotation applied at send-time.
-
 import colorsys
 import io
 import os

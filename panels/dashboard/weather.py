@@ -1,5 +1,3 @@
-# Weather fetching, supports openmeteo (default), wttr.in, and NWS (US only).
-
 import os
 import sys
 import requests

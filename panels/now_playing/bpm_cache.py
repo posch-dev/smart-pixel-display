@@ -1,5 +1,3 @@
-# BPM lookup backed by SQLite, falling back through GetSongBPM then genre estimate.
-
 import os
 import sqlite3
 import requests
