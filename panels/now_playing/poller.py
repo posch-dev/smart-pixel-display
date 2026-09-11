@@ -29,6 +29,16 @@ _user: pylast.User | None = None
 _np_call_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="np-call")
 
 
+def _credentials_missing() -> str:
+    scrobbler = config.get("nowplaying", "scrobbler") or "lastfm"
+    if scrobbler == "librefm":
+        wanted = ("LIBREFM_USERNAME", "LIBREFM_PASSWORD")
+    else:
+        wanted = ("LASTFM_API_KEY", "LASTFM_USERNAME")
+    missing = [name for name in wanted if not os.getenv(name)]
+    return ", ".join(missing)
+
+
 def _ensure_network() -> None:
     global _current_scrobbler, _network, _user
     scrobbler = config.get("nowplaying", "scrobbler") or "lastfm"
@@ -119,14 +129,29 @@ def get_state() -> dict:
 
 
 def _poll_loop() -> None:
-    global _song_start
+    global _song_start, _last_error
 
     current_title = None
     _none_count   = 0
     _NONE_DEBOUNCE = 3  # consecutive None polls before treating as stopped
 
+    idle_note = ""
     while True:
         _running.wait()
+        # a panel nobody switched on has nothing to poll for, and without keys every call
+        # would come back as the same error a couple of times a second
+        reason = ("nowplaying is switched off" if not config.get("nowplaying", "enabled", False)
+                  else f"no credentials in .env: {_credentials_missing()}" if _credentials_missing()
+                  else "")
+        if reason:
+            if reason != idle_note:
+                idle_note = reason
+                log.info("poller", f"idle, {reason}")
+            time.sleep(_IDLE_POLL_S)
+            continue
+        if idle_note:
+            idle_note = ""
+            log.info("poller", "polling again")
         _ensure_network()
         try:
             try:
@@ -281,7 +306,10 @@ def _poll_loop() -> None:
                         _state["playing"] = True
 
         except Exception as e:
-            log.error("poller", f"{e}")
+            # the same failure every poll would bury everything else in the log
+            if str(e) != _last_error:
+                _last_error = str(e)
+                log.error("poller", f"{e}")
 
         configured = config.get("expert", "poll_s")
         limit = _POLL_LIMIT.get(_current_scrobbler or "lastfm", 1.0)
@@ -289,6 +317,9 @@ def _poll_loop() -> None:
         sleep_s = max(configured, limit) if configured else default
         time.sleep(sleep_s)
 
+
+_last_error  = ""
+_IDLE_POLL_S = 5.0
 
 _poll_thread: threading.Thread | None = None
 
