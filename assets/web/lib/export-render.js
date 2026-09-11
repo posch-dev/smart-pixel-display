@@ -6,7 +6,7 @@
 // here reads the clock: a frame is drawn for the time it is handed.
 
 const R_W = 1000, R_H = 250, CQ = 10, R_PAD = 3.5 * CQ;
-const R_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const R_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Selawik', sans-serif";
 const R_SEG  = "'SevenSegment', ui-monospace, monospace";
 
 const _rMeasure = document.createElement('canvas').getContext('2d');

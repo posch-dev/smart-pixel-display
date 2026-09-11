@@ -327,3 +327,8 @@ GPL-3.0, see [here](./LICENSE).
 Icons come from two sets: [pixelarticons](https://github.com/halfmage/pixelarticons) under
 MIT, and Streamline Pixel by [Streamline](https://streamlinehq.com) under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+The web UI asks for Segoe UI and falls back to [Selawik](https://github.com/microsoft/Selawik),
+Microsoft's open source replacement for it, under the
+[SIL Open Font License 1.1](https://scripts.sil.org/OFL). The licence ships with the font in
+`assets/fonts/Selawik-LICENSE.txt`.

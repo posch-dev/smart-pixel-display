@@ -91,7 +91,6 @@ C_ORANGE     = (255, 140, 0)     # NOW! alternating color
 C_TURQUOISE  = (0, 200, 180)    # Mode 2 start/end time
 
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "assets", "fonts")
-_DELTARUNE = os.path.join(_FONTS_DIR, "MinecraftStandard.otf")
 _MINECRAFT = os.path.join(_FONTS_DIR, "MinecraftStandard.otf")
 _IKKLE4    = os.path.join(_FONTS_DIR, "Ikkle4.ttf")
 _HAIRPORT  = os.path.join(_FONTS_DIR, "HIAIRP22.ttf")
@@ -148,7 +147,7 @@ COLON_DOT  = 1   # size of hand-drawn colon dots (same style as clock.py)
 
 def _draw_clock(draw: ImageDraw.ImageDraw, now: datetime, colon_on: bool,
                 y: int = 0, x_offset: int = 0) -> None:
-    font = _load(_DELTARUNE, FONT_H_CLK)
+    font = _load(_MINECRAFT, FONT_H_CLK)
     hh   = f"{now.hour:02d}"
     mm   = f"{now.minute:02d}"
 
@@ -544,7 +543,7 @@ def render_frame(now: datetime, w: dict | None, colon_on: bool,
     h_8 = _th(draw, "0", f8)
     y_low  = H - h_8
     y_high = y_low - h_8 - 2
-    h_clk  = _th(draw, "0", _load(_DELTARUNE, FONT_H_CLK))
+    h_clk  = _th(draw, "0", _load(_MINECRAFT, FONT_H_CLK))
     clk_y  = (y_high - h_clk) // 2
 
     if cal_override is not None:
@@ -563,7 +562,7 @@ def render_frame(now: datetime, w: dict | None, colon_on: bool,
     x_clock  = 0
     if not has_events and w_disp:
         f_num    = _load(_MINECRAFT, FONT_H_TEMP)
-        f_clk    = _load(_DELTARUNE, FONT_H_CLK)
+        f_clk    = _load(_MINECRAFT, FONT_H_CLK)
         tw_num   = _tw(draw, str(round(w_disp["temp_now"])), f_num)
         clk_w    = _tw(draw, f"{now.hour:02d}", f_clk) + 4 + _tw(draw, f"{now.minute:02d}", f_clk)
         x_hilo_e = tw_num - 1 + 4 + GAP
