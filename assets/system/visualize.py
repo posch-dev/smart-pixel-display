@@ -28,6 +28,15 @@ _clock      = {"key": "", "colon_on": b"", "colon_off": b""}
 _filling    = {"key": "", "colon_on": b"", "colon_off": b""}
 _pending    = {}
 _mode       = {"visualize": False, "canned": False}
+# the chunk gifs a track was drawn from, per song, so an export does not have to render
+# again what the display has already been given
+_songs      = {}
+_viewers    = {}
+_slot_song  = {}
+_song_now   = {"key": "", "at": 0.0}
+SONG_KEEP   = 5
+PIN_TTL     = 30.0
+PREV_KEEP   = 5.0
 _lock       = threading.Lock()
 _serving    = False
 _last_poll  = 0.0
@@ -125,6 +134,89 @@ def _keep_clock_pair(data: bytes) -> None:
         _clock.update(_filling)
 
 
+# the panel knows the track and where in it the chunk starts, so nothing has to be guessed
+# back out of the gif. the state rides along, an export renders the missing chunks from it
+def note_song(key: str, state: dict, start_s: float, chunk_s: float) -> None:
+    _pending.update(song=key, song_state=state, song_start=start_s, song_chunk=chunk_s)
+
+
+def _keep_song_chunk(data: bytes, slot: int) -> None:
+    key   = _pending.pop("song", None)
+    state = _pending.pop("song_state", None)
+    start = round(_pending.pop("song_start", 0.0), 1)
+    every = _pending.pop("song_chunk", 0.0)
+    if not key:
+        return
+    with _lock:
+        song = _songs.setdefault(key, {"chunks": {}, "state": state, "chunk_s": every})
+        song["state"]   = state or song["state"]
+        song["chunk_s"] = every or song["chunk_s"]
+        song["at"]      = time.time()
+        song["chunks"][start] = data
+        _slot_song[slot] = (key, start)
+
+
+# a chunk is uploaded to the standby slot seconds before it is shown, so what is on screen
+# is decided here and not when it arrives
+def _show_song_chunk(slot: int) -> None:
+    if slot not in _slot_song:
+        return
+    key, start = _slot_song[slot]
+    with _lock:
+        _song_now.update(key=key, at=start)
+        if key in _songs:
+            _songs[key]["at"] = time.time()
+        _prune_songs()
+
+
+def chunk_now() -> float:
+    return _song_now["at"]
+
+
+def song_chunk(key: str, at: float) -> bytes | None:
+    with _lock:
+        found = _songs.get(key or _song_now["key"])
+        return found["chunks"].get(round(at, 1)) if found else None
+
+
+# kept: the song on screen, the one before it for a moment, and every song a paused viewer
+# is holding. the cap bounds memory and never refuses anybody, an export re-renders instead
+def _prune_songs() -> None:
+    now    = time.time()
+    pinned = {v["song"] for v in _viewers.values()
+              if v["paused"] and now - v["at"] < PIN_TTL and v["song"]}
+    keep   = {_song_now["key"]} | pinned
+    for key in [k for k in _songs if k not in keep]:
+        if now - _songs[key]["at"] > PREV_KEEP:
+            del _songs[key]
+    while len(_songs) > SONG_KEEP:
+        oldest = min((k for k in _songs if k not in keep), key=lambda k: _songs[k]["at"], default=None)
+        if oldest is None:
+            return
+        del _songs[oldest]
+
+
+# one tab is one viewer, and its poll is the heartbeat. a viewer that stops asking stops
+# pinning, which is what keeps a closed tab from holding a song for ever
+def seen_viewer(viewer: str, paused: bool, song: str = "") -> None:
+    if not viewer:
+        return
+    with _lock:
+        # the tab names the track it is holding. reading the one on screen instead loses the
+        # race against a track that changes in the moment between the pause and the next poll
+        _viewers[viewer] = {"paused": paused, "at": time.time(),
+                            "song": (song or _song_now["key"]) if paused else ""}
+        for gone in [v for v, seen in _viewers.items() if time.time() - seen["at"] > PIN_TTL * 2]:
+            del _viewers[gone]
+        _prune_songs()
+
+
+def song(key: str = "") -> dict | None:
+    with _lock:
+        found = _songs.get(key or _song_now["key"])
+        return dict(found, chunks=dict(found["chunks"])) if found else None
+
+
 def _put(data: bytes, mime: str, slot="live") -> None:
     with _lock:
         _frame["data"]    = data
@@ -148,7 +240,9 @@ def mode() -> dict:
 def live_state() -> dict:
     with _lock:
         return {"version": _frame["version"], "clock_key": _clock["key"],
-                "has_pair": bool(_clock["colon_on"] and _clock["colon_off"]), **_status, **_mode}
+                "has_pair": bool(_clock["colon_on"] and _clock["colon_off"]),
+                "song": _song_now["key"], "chunk_at": _song_now["at"],
+                **_status, **_mode}
 
 
 def label(text: str, panel: str | None = None) -> None:
@@ -271,8 +365,10 @@ class FakeClient:
             _put(data, mime)
         else:
             _slots[save_slot] = (data, mime)
+            _keep_song_chunk(data, save_slot)
 
     async def show_slot(self, slot: int) -> None:
+        _show_song_chunk(slot)
         if slot in _slots:
             data, mime = _slots[slot]
             _put(data, mime, slot=str(slot))
@@ -326,9 +422,11 @@ class TapClient:
             _put(data, mime)
         else:
             _slots[save_slot] = (data, mime)
+            _keep_song_chunk(data, save_slot)
 
     async def show_slot(self, slot: int) -> None:
         await self._inner.show_slot(slot)
+        _show_song_chunk(slot)
         if slot in _slots:
             data, mime = _slots[slot]
             _put(data, mime, slot=str(slot))
@@ -404,5 +502,26 @@ if __name__ == "__main__":
         assert frame("colon_on")[0] == new
         print("a half filled minute never reaches the browser")
 
+    def _check_song_pins() -> None:
+        _songs.clear()
+        _viewers.clear()
+        for key in ("a", "b"):
+            note_song(key, {"title": key}, 0.0, 20.0)
+            _keep_song_chunk(b"gif " + key.encode(), 1)
+            _show_song_chunk(1)
+        assert set(_songs) == {"a", "b"}, list(_songs)
+        seen_viewer("tab1", True, "b")             # pauses on b and says so
+        _songs["a"]["at"] -= PREV_KEEP + 1
+        note_song("c", {"title": "c"}, 0.0, 20.0)
+        _keep_song_chunk(b"gif c", 1)
+        _show_song_chunk(1)
+        assert "a" not in _songs and "b" in _songs, list(_songs)
+        _viewers["tab1"]["at"] -= PIN_TTL + 1      # the tab stopped asking
+        _songs["b"]["at"] -= PREV_KEEP + 1
+        _prune_songs()
+        assert list(_songs) == ["c"], list(_songs)
+        print("a paused tab holds its song, a tab that stops asking stops holding it")
+
     asyncio.run(_check())
     _check_clock_hold()
+    _check_song_pins()

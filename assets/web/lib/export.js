@@ -21,6 +21,12 @@ const EX_STATES = {clock: 2, dashboard: 2};
 const EX_NP_SWEEP_S = 10;
 const EX_LABELS = {clock: 'Clock', verse_of_day: 'Verse', nowplaying: 'NowPlaying', dashboard: 'Dashboard'};
 
+// the display source: the frames the panel really sent, fetched from /live/frame instead
+// of drawn from the scene. only the panel that is on the display can be had this way
+const EX_DISPLAY_W = 128;
+let _exLive = null;
+let _exDisplayKind = null;
+
 let _exWindow = null;
 let _exAnimKind = null;
 let _exLapse = {from: null, to: null};
@@ -42,6 +48,213 @@ let _exHeadCustom = false;
 // the pollers ask before they redraw, so the panel on screen stays the one being written
 function exFrozen() { return _exOpen; }
 
+let _exWasHeld = false;
+
+// what the dialog is looking at is what it writes, so the page holds still while it stands.
+// a page that was already held keeps its own pause when the dialog goes
+function _exHold(on) {
+  const held = typeof pvHeld === 'function' ? pvHeld()
+             : (typeof livePaused === 'function' && livePaused());
+  if (on) {
+    _exWasHeld = held;
+    if (held) return;
+  } else if (_exWasHeld) {
+    return;
+  }
+  if (typeof pvHold === 'function') return pvHold(on);
+  if (typeof livePause === 'function') livePause(on);
+}
+
+function _exLiveSrc(variant) {
+  return '/live/frame?' + new URLSearchParams(variant ? {variant, t: Date.now()} : {t: Date.now()});
+}
+
+async function _exLiveImg(variant) {
+  const img = new Image();
+  img.src = _exLiveSrc(variant);
+  await img.decode();
+  return img;
+}
+
+// the panel turns its picture for how the display hangs, the same way back the tile does it,
+// and nearest neighbour is the only scaling a 128 pixel wide frame survives
+function _exLiveCanvas(img, width, upright = true) {
+  const cv = document.createElement('canvas');
+  const native = {w: img.naturalWidth || img.displayWidth || img.width,
+                  h: img.naturalHeight || img.displayHeight || img.height};
+  const scale = width ? width / native.w : 1;
+  cv.width  = Math.round(native.w * scale);
+  cv.height = Math.round(native.h * scale);
+  const device = (upright && typeof cfg !== 'undefined' && cfg.device) || {};
+  const ctx = cv.getContext('2d', {willReadFrequently: true});
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(device.flip_horizontal ? -1 : 1, 0, 0, device.flip_vertical ? -1 : 1,
+                   device.flip_horizontal ? cv.width : 0, device.flip_vertical ? cv.height : 0);
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  return cv;
+}
+
+// a gif that was not asked to move is the one frame, written once
+function _exStillGif(cv) {
+  const data = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+  const gif = gifStart();
+  gifWrite(gif, data, cv.width, cv.height, gifPalette([data]), 100);
+  return gifFinish(gif);
+}
+
+async function _exClockGif(width) {
+  const shots = [];
+  for (const variant of ['colon_on', 'colon_off'])
+    shots.push(_exLiveCanvas(await _exLiveImg(variant), width));
+  const frames = shots.map(cv => cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data);
+  const palette = gifPalette(frames);
+  const gif = gifStart();
+  const delay = 1000 * ((typeof cfg !== 'undefined' && cfg.clock && cfg.clock.blink_interval) || 1);
+  frames.forEach(data => gifWrite(gif, data, shots[0].width, shots[0].height, palette, delay));
+  return gifFinish(gif);
+}
+
+// a still takes the frame somebody is looking at, which is the one a pause holds. the clock
+// is the exception: its still is always the lit half, whatever the blink or a pause left up
+async function _exLiveStill() {
+  const face = document.querySelector('.live-face');
+  const held = face && face.querySelector('.live-frozen');
+  // a frozen page hands over what is frozen, the clock's lit half included: it was held
+  // that way, and the display may have moved on to another panel since
+  if (typeof livePaused === 'function' && livePaused() && held && held.width) return held;
+  if (_exMode === 'clock' && _exLive && _exLive.has_pair) return _exLiveImg('colon_on');
+  // drawing the running img captures the gif frame that is on screen, a fresh fetch would
+  // hand over the first one instead
+  const shot = face && face.querySelector('.live-shot');
+  return shot && shot.currentSrc && !shot.hidden ? shot : _exLiveImg();
+}
+
+// the pi walks the track chunk by chunk and says how far it is, so a render that takes
+// twenty seconds on a zero is not a frozen dialog
+async function _exWholeSong(onStep) {
+  // frozen, the track to render is the one being held, not the one that has taken over
+  const held = typeof livePaused === 'function' && livePaused()
+    && typeof liveHeldSong === 'function' ? liveHeldSong() : '';
+  const ask = held ? '?key=' + encodeURIComponent(held) : '';
+  const started = await fetch('/live/song' + ask, {method: 'POST'}).then(r => r.json());
+  if (!started.ok) throw new Error(started.error || 'the song cannot be rendered');
+  for (;;) {
+    exAbortCheck();
+    const state = await fetch('/live/song/status', {cache: 'no-store'}).then(r => r.json());
+    if (state.error) throw new Error(state.error);
+    onStep(state.done, state.total || 1, 'Rendering on the pi');
+    if (state.ready) break;
+    await new Promise(done => setTimeout(done, 400));
+  }
+  return fetch('/live/song.gif', {cache: 'no-store'}).then(r => r.blob());
+}
+
+// the chunk on screen. frozen, that is the one the pause was taken on, which the pi still
+// holds because this tab is pinning it, and not whatever the track has moved on to. the pi
+// turns it upright and scales it: a browser cannot, it has no decoder for a gif
+function _exChunkBlob(width) {
+  const held = typeof livePaused === 'function' && livePaused();
+  const song = held && typeof liveHeldSong === 'function' ? liveHeldSong() : '';
+  const ask  = new URLSearchParams({upright: '1'});
+  if (song) { ask.set('key', song); ask.set('at', liveHeldChunk()); }
+  if (width) ask.set('w', width);
+  return fetch('/live/chunk?' + ask, {cache: 'no-store'}).then(r => {
+    if (!r.ok) throw new Error('that chunk is no longer on the pi');
+    return r.blob();
+  });
+}
+
+// a gif taken apart frame by frame: the only way to turn it upright, scale it or write a
+// film of it. every frame comes back as a canvas already the right way up
+async function _exGifFrames(blob, width) {
+  const decoder = new ImageDecoder({data: await blob.arrayBuffer(), type: 'image/gif'});
+  await decoder.completed;
+  const count = decoder.tracks.selectedTrack.frameCount;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    exAbortCheck();
+    const {image} = await decoder.decode({frameIndex: i});
+    // the pi handed these over the right way up already, only the size is left
+    out.push({canvas: _exLiveCanvas(image, width, false),
+              ms: Math.round((image.duration || 100000) / 1000)});
+    image.close();
+  }
+  return out;
+}
+
+function _exFramesToGif(frames) {
+  const shots = frames.map(f => f.canvas.getContext('2d')
+    .getImageData(0, 0, f.canvas.width, f.canvas.height).data);
+  const palette = gifPalette(shots);
+  const gif = gifStart();
+  shots.forEach((data, i) => gifWrite(gif, data, frames[i].canvas.width,
+                                      frames[i].canvas.height, palette, frames[i].ms));
+  return gifFinish(gif);
+}
+
+// the same muxers the twin export uses, fed from decoded frames instead of drawn ones
+async function _exFramesToVideo(frames, want, onStep) {
+  const first = frames[0].canvas;
+  const pick = await exVideoPick(first.width, first.height, want);
+  if (!pick) throw new Error('this browser cannot encode ' + want);
+  const fps = Math.round(1000 / (frames[0].ms || 100));
+  const lib = pick.ext === 'mp4' ? Mp4Muxer : WebMMuxer;
+  const target = new lib.ArrayBufferTarget();
+  const muxer = new lib.Muxer(pick.ext === 'mp4'
+    ? {target, fastStart: 'in-memory',
+       video: {codec: 'avc', width: first.width, height: first.height}}
+    : {target,
+       video: {codec: pick.mux, width: first.width, height: first.height, frameRate: fps}});
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: e => console.error('encoder failed:', e),
+  });
+  encoder.configure(pick.cfg);
+  let at = 0;
+  try {
+    for (let i = 0; i < frames.length; i++) {
+      exAbortCheck();
+      const frame = new VideoFrame(frames[i].canvas,
+        {timestamp: Math.round(at * 1000), duration: Math.round(frames[i].ms * 1000)});
+      encoder.encode(frame, {keyFrame: i % Math.max(2, 2 * fps) === 0});
+      frame.close();
+      at += frames[i].ms;
+      while (encoder.encodeQueueSize > 8) await new Promise(r => setTimeout(r));
+      if (onStep) onStep(i + 1, frames.length, 'Writing frames');
+      await _exBreathe();
+    }
+    await encoder.flush();
+  } catch (e) {
+    encoder.close();
+    throw e;
+  }
+  muxer.finalize();
+  return {blob: new Blob([target.buffer], {type: 'video/' + pick.ext}), ext: pick.ext};
+}
+
+// no scene, no renderer: the bytes the display was handed, already turned upright by the pi,
+// taken apart again only where a film needs its frames
+async function _exRunDisplay(width) {
+  const fmt  = document.getElementById('ex-format').value;
+  const kind = fmt === 'png' ? 'still' : _exDisplayKindNow(fmt);
+  if (kind === 'pair')
+    return _exDownload(await _exClockGif(width), _exName(_exMode, 'gif'));
+  if (kind === 'still') {
+    const canvas = _exLiveCanvas(await _exLiveStill(), width);
+    if (fmt === 'gif') return _exDownload(_exStillGif(canvas), _exName(_exMode, 'gif'));
+    return _exDownload(await new Promise(r => canvas.toBlob(r, 'image/png')),
+                       _exName(_exMode, 'png'));
+  }
+  if (_exScene) _exShowRun('gif', width, _exScene);
+  const wantsFilm = _exIsVideo(fmt);
+  const blob = kind === 'song' ? await _exWholeSong(_exStep)
+                               : await _exChunkBlob(wantsFilm ? 0 : width);
+  if (!wantsFilm) return _exDownload(blob, _exName(_exMode, 'gif'));
+  const {blob: film, ext} = await _exFramesToVideo(await _exGifFrames(blob, width),
+                                                  fmt, _exStep);
+  _exDownload(film, _exName(_exMode, ext));
+}
+
 function _exBuildDialog() {
   if (document.getElementById('ex-overlay')) return;
   const wrap = document.createElement('div');
@@ -58,7 +271,12 @@ function _exBuildDialog() {
     </div>
     <div id="ex-form">
     <div class="row">
-      <div class="row-left"><div class="row-label">Format</div></div>
+      <div class="row-left"><div class="row-label">Source</div></div>
+      <div class="row-right"><div class="ex-source" id="ex-source"></div></div>
+    </div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Format</div>
+        <div class="row-sub" id="ex-fmt-why"></div></div>
       <div class="row-right"><select id="ex-format" onchange="_exPaint()">
         <option value="svg">SVG</option>
         <option value="png">PNG</option>
@@ -70,10 +288,11 @@ function _exBuildDialog() {
     <div class="row" id="ex-width-row">
       <div class="row-left"><div class="row-label">Width</div><div class="row-sub" id="ex-size"></div></div>
       <div class="row-right"><select id="ex-width" onchange="_exPaint()">
+        <option value="0" hidden>Original</option>
         ${EX_WIDTHS.map(w => `<option value="${w}"${w === 1920 ? ' selected' : ''}>${w}</option>`).join('')}
       </select></div>
     </div>
-    <div class="row">
+    <div class="row" id="ex-bg-row">
       <div class="row-left"><div class="row-label">Background</div></div>
       <div class="row-right"><label class="toggle"><input type="checkbox" id="ex-bg" onchange="_exPaint()">
         <div class="t-track"></div><div class="t-thumb"></div></label></div>
@@ -230,9 +449,105 @@ function _exFrameLabel(frames, sweep) {
   return `${one} @ ${(Math.round(fps * 10) / 10)} fps`;
 }
 
+function _exHeldPanel() {
+  return typeof liveHeldPanel === 'function' ? liveHeldPanel() : '';
+}
+
+// what a panel can hand over from the display. a track has three, the clock two, everything
+// else is one picture and asks nothing
+const EX_DISPLAY_KINDS = {
+  nowplaying: [['still', 'Still'], ['chunk', 'Chunk'], ['song', 'Whole Song']],
+  clock:      [['still', 'Still'], ['pair', 'Blink']],
+};
+
+// only a decoder can turn a gif upright, scale it or write it as a film. gifenc writes and
+// never reads, so ImageDecoder is the one there is, and without it a gif goes out as it is
+function _exCanDecode() {
+  return typeof ImageDecoder === 'function';
+}
+
+function _exDisplayKinds() {
+  const kinds = EX_DISPLAY_KINDS[_exMode] || [];
+  return _exMode === 'clock' && !(_exLive && _exLive.has_pair) ? [] : kinds;
+}
+
+function _exDisplayKindNow(fmt) {
+  const kinds = _exDisplayKinds().map(k => k[0]);
+  if (!kinds.length) return 'still';
+  // a film cannot stand still, so it falls to the moving one next to it
+  if (_exIsVideo(fmt) && (!_exDisplayKind || _exDisplayKind === 'still')) return kinds[1];
+  return kinds.includes(_exDisplayKind) ? _exDisplayKind : kinds[1];
+}
+
+function setExDisplayKind(kind) {
+  _exDisplayKind = kind;
+  _exPaint();
+}
+
+function _exDisplayKindSeg(fmt) {
+  const now = _exDisplayKindNow(fmt);
+  return _exDisplayKinds().map(([v, label]) => {
+    const out = v === 'still' && _exIsVideo(fmt);
+    return `<button onclick="setExDisplayKind('${v}')" class="${now === v ? 'on' : ''}"
+      ${out ? 'disabled title="A film cannot stand still"' : ''}>${label}</button>`;
+  }).join('');
+}
+
+// the dialog does not ask: the home tile exports whichever side it is showing, and the
+// viewer has the choice at the top of its own drawer. the page is asked, never the reading,
+// or a slow /live/state would open the dialog on the twin and quietly stay there
+function _exDisplayNow() {
+  if (typeof pvSource === 'function') return pvSource() === 'display';
+  const tile = document.getElementById('home-flip');
+  return !!tile && tile.classList.contains('flipped');
+}
+
+// the display frames carry their own size and nothing about them is drawn here, so every
+// row that shapes a drawing goes away and the width may stand at the panel's own 128
+function _exPaintDisplay() {
+  document.getElementById('ex-source').textContent = 'Display';
+  const sel  = document.getElementById('ex-format');
+  const film = _exMode === 'nowplaying' && _exCanDecode();
+  for (const opt of sel.options)
+    opt.disabled = opt.value === 'svg' || (_exIsVideo(opt.value) && (!film || _exVideoAsked[opt.value] === false));
+  if (sel.options[sel.selectedIndex].disabled) sel.value = 'png';
+  const fmt  = sel.value;
+  const kinds = _exDisplayKinds();
+  const kind  = fmt === 'png' ? 'still' : _exDisplayKindNow(fmt);
+  const asked = kinds.length && fmt !== 'png';
+  document.getElementById('ex-lapse-row').style.display = asked ? '' : 'none';
+  if (asked) {
+    document.getElementById('ex-kind').innerHTML = _exDisplayKindSeg(fmt);
+    document.getElementById('ex-lapse-why').textContent = '';
+  }
+  document.getElementById('ex-fmt-why').textContent =
+    film || _exMode !== 'nowplaying' ? '' : 'No WebM, MP4 available for this kind of export';
+  // a track is minutes long: scaling every frame of it would make a file nobody wants
+  const asIs = kind === 'song';
+  const width = document.getElementById('ex-width');
+  width.querySelector('option[value="0"]').hidden = false;
+  if (asIs) width.value = 0;
+  width.disabled = asIs;
+  const w = +width.value || EX_DISPLAY_W;
+  document.getElementById('ex-size').textContent = `${w} x ${w / 4} Pixel`
+    + (asIs ? ', the size the panel drew it' : '');
+  document.getElementById('ex-width-row').style.display = '';
+  for (const id of ['ex-bg-row', 'ex-anim-row', 'ex-lapse-box', 'ex-head-row'])
+    document.getElementById(id).style.display = 'none';
+}
+
 // mp4 is a film either way, png is one frame either way, so only svg and gif ask
 function _exPaint() {
   const fmt = document.getElementById('ex-format').value;
+  if (_exDisplayNow()) return _exPaintDisplay();
+  document.getElementById('ex-source').textContent = 'Twin';
+  const width = document.getElementById('ex-width');
+  width.querySelector('option[value="0"]').hidden = true;
+  width.disabled = false;
+  if (!+width.value) width.value = 1920;
+  document.getElementById('ex-bg-row').style.display = '';
+  document.getElementById('ex-fmt-why').textContent = '';
+  for (const opt of document.getElementById('ex-format').options) opt.disabled = false;
   document.getElementById('ex-width-row').style.display = fmt === 'svg' ? 'none' : '';
   const w = +document.getElementById('ex-width').value;
   const box = _exBox();
@@ -303,6 +618,7 @@ function _exPaint() {
 // the export will draw and no second reading can slip in between
 async function openExport() {
   _exBuildDialog();
+  _exHold(true);
   _exMode = _bpMode || 'clock';
   _exScene = null;
   _exOpen = true;
@@ -314,6 +630,14 @@ async function openExport() {
   document.getElementById('ex-panel').textContent = EX_LABELS[_exMode] || 'Export';
   document.getElementById('ex-what').textContent = '';
   document.getElementById('ex-overlay').classList.add('show');
+  _exLive = await fetch('/live/state', {cache: 'no-store'}).then(r => r.json()).catch(() => null);
+  if (_exLive && !_exLive.version) _exLive = null;
+  // the mirror names its own subject: the twin may stand on another panel, or on a stale one.
+  // frozen, the picture on screen outranks it, the display has gone on without it
+  if (_exDisplayNow()) _exMode = _exHeldPanel() || (_exLive && _exLive.panel) || _exMode;
+  document.getElementById('ex-panel').textContent = EX_LABELS[_exMode] || 'Export';
+  _exPaint();
+
   const data = blueprintFrozenData() || await fetch('/home').then(r => r.json());
   _exScene = await exScene(_exMode, data);
   document.getElementById('ex-what').textContent = _exSubject(_exMode, _exScene);
@@ -442,6 +766,7 @@ function _exSubject(mode, scene) {
 function closeExport() {
   if (_exRunning) _exAbort = true;
   _exOpen = false;
+  _exHold(false);
   document.getElementById('ex-overlay')?.classList.remove('show');
 }
 
@@ -947,6 +1272,11 @@ async function runExport() {
   btn.disabled = true;
   btn.textContent = 'Rendering';
   try {
+    if (_exDisplayNow()) {
+      await _exRunDisplay(width);
+      closeExport();
+      return;
+    }
     const scene = _exScene
       || await exScene(_exMode, blueprintFrozenData() || await fetch('/home').then(r => r.json()));
     // one place decides whether anything moves, the head is placed when nothing does

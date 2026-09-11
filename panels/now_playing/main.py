@@ -60,8 +60,12 @@ async def _send_black(client: AsyncClient) -> None:
     await client.send_image_hex(_BLACK_HEX, ".png")
 
 
+def _song_id(state: dict) -> str:
+    return f"{state.get('title') or ''} - {state.get('artist') or ''}".strip(" -")
+
+
 async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = False,
-                  ble_lock: asyncio.Lock | None = None) -> None:
+                  ble_lock: asyncio.Lock | None = None, chunk_s: float = 0.0) -> None:
     t0 = time.monotonic()
     label = " [quick]" if quick else ""
     log.info("nowplaying", f"rendering gif{label}  elapsed={state['elapsed_s']:.0f}s ...")
@@ -72,6 +76,9 @@ async def _upload(client: AsyncClient, state: dict, slot: int, quick: bool = Fal
     path = os.path.join(tempfile.gettempdir(), f"nowplaying_{slot}.gif")
     with open(path, "wb") as f:
         f.write(gif)
+    # the web app keeps the chunk, so an export of the whole song renders only what is missing
+    visualize.note_song(_song_id(state), state, state.get("elapsed_s") or 0.0,
+                        chunk_s or CHUNK_S)
     if ble_lock:
         async with ble_lock:
             await client.send_image(path, save_slot=slot)
@@ -298,7 +305,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     ns["elapsed_s"] = 0.0
                     tgt = _other(active_slot) if active_slot else SLOT_A
                     standby_slot    = tgt
-                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, quick=quick, ble_lock=ble_lock))
+                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, quick=quick, ble_lock=ble_lock, chunk_s=current_chunk_s))
                     standby_elapsed = 0.0
                     standby_song    = current_song
                     switch_on_ready = True
@@ -398,7 +405,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                 ns["elapsed_s"] = chunk_elapsed_s
                 tgt = _other(active_slot)
                 standby_slot    = tgt
-                standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
+                standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock, chunk_s=current_chunk_s))
                 standby_elapsed = chunk_elapsed_s
                 standby_song    = song_key
                 switch_on_ready = True
@@ -415,7 +422,7 @@ async def run_loop(client: AsyncClient, initial_black: bool = True, brightness: 
                     tgt = _other(active_slot)
                     log.debug("nowplaying", f"preparing chunk elapsed={next_chunk_elapsed:.0f}s for slot {tgt}")
                     standby_slot    = tgt
-                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock))
+                    standby_task    = asyncio.create_task(_upload(client, ns, tgt, ble_lock=ble_lock, chunk_s=current_chunk_s))
                     standby_elapsed = next_chunk_elapsed
                     standby_song    = song_key
 

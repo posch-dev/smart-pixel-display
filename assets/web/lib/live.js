@@ -3,6 +3,18 @@
 
 const LIVE_POLL_MS = 400;
 
+// one tab is one viewer, and the poll is its heartbeat: the pi holds the chunk gifs of a
+// song somebody is paused on, and lets go of them when the tab stops asking
+const LIVE_VIEWER = (() => {
+  const made = Math.random().toString(36).slice(2);
+  try {
+    return sessionStorage.getItem('spd_viewer')
+        || (sessionStorage.setItem('spd_viewer', made), made);
+  } catch (e) {
+    return made;
+  }
+})();
+
 let _liveTimer  = null;
 let _liveFaces  = [];
 let _liveSeen   = -1;
@@ -10,9 +22,22 @@ let _liveKey    = '';
 let _liveBlink  = null;
 let _livePaused = false;
 let _liveOff    = '';
+let _livePanel  = '';
+let _liveHeldOn = '';
+let _liveSong   = '';
+let _liveChunk  = 0;
+let _liveHeldSong = '';
+let _liveHeldChunk = 0;
 
 function liveRunning() { return _liveTimer !== null; }
 function livePaused()  { return _livePaused; }
+// which panel the held picture is of, which is not what the display moved on to
+function liveHeldPanel() { return _liveHeldOn; }
+function liveSong()      { return _liveSong; }
+// the track and the chunk the held picture is of, which the pi still has because this tab
+// pins them for as long as it keeps polling
+function liveHeldSong()  { return _liveHeldSong; }
+function liveHeldChunk() { return _liveHeldChunk; }
 
 function liveFaceHtml() {
   return '<img class="live-shot" alt="" onerror="liveBroken(this)">'
@@ -79,21 +104,46 @@ function liveStop() {
   _liveStopBlink();
 }
 
+// there is no way to stop a gif in an img, so the frame on screen is copied out. a face
+// turned to while the page is already frozen has none yet, so the copy waits for its first
+function _liveHold(face) {
+  const shot = face.querySelector('.live-shot');
+  const held = face.querySelector('.live-frozen');
+  if (!shot || !held) return;
+  if (!shot.naturalWidth) {
+    shot.addEventListener('load', () => { if (_livePaused) _liveHold(face); }, {once: true});
+    return;
+  }
+  held.width  = shot.naturalWidth;
+  held.height = shot.naturalHeight;
+  held.getContext('2d').drawImage(shot, 0, 0);
+}
+
 function livePause(on) {
   _livePaused = on;
   if (on) {
-    _liveFaces.forEach(face => {
-      const shot = face.querySelector('.live-shot');
-      const held = face.querySelector('.live-frozen');
-      if (!shot || !held) return;
-      // there is no way to stop a gif in an img, so the frame on screen is copied out
-      held.width  = shot.naturalWidth  || 128;
-      held.height = shot.naturalHeight || 32;
-      held.getContext('2d').drawImage(shot, 0, 0);
-    });
+    _liveHeldOn    = _livePanel;
+    _liveHeldSong  = _liveSong;
+    _liveHeldChunk = _liveChunk;
+    _liveFaces.forEach(_liveHold);
     _liveStopBlink();
+    _liveHoldLit();
   }
+  // the blink died with the pause, and the key would tell the next tick it is still armed
+  else { _liveKey = ''; _liveHeldOn = ''; _liveHeldSong = ''; }
   _livePaintFaces();
+}
+
+// a held clock shows the lit half, never the gap the blink happened to stop in. only the
+// clock carries a key, so that is also what says this is one
+function _liveHoldLit() {
+  if (!_liveKey) return;
+  const lit = new Image();
+  lit.onload = () => _liveFaces.forEach(face => {
+    const held = face.querySelector('.live-frozen');
+    if (held && _livePaused) held.getContext('2d').drawImage(lit, 0, 0, held.width, held.height);
+  });
+  lit.src = _liveSrc('colon_on') + '&t=' + Date.now();
 }
 
 function _liveStopBlink() {
@@ -120,13 +170,23 @@ function _liveClock(state) {
     on = !on;
   };
   paint();
-  if (every > 0) _liveBlink = setInterval(paint, every * 1000);
+  // paint() starts on the lit half, which is the one a frozen clock is meant to hold
+  if (every > 0 && !_livePaused) _liveBlink = setInterval(paint, every * 1000);
 }
 
 function _liveTick() {
-  if (_livePaused) return;
   if (_liveFaces.some(face => face.offsetParent === null)) return;   // not on screen, not worth a byte
-  fetch('/live/state', { cache: 'no-store' }).then(r => r.json()).then(state => {
+  // frozen, the poll goes on as the heartbeat alone. a face just turned to has no frame at
+  // all yet, so its first one still arrives
+  const first = _liveSeen === -1;
+  const holding = _livePaused ? `&song=${encodeURIComponent(_liveHeldSong)}` : '';
+  fetch(`/live/state?viewer=${LIVE_VIEWER}&paused=${_livePaused ? 1 : 0}${holding}`,
+        { cache: 'no-store' })
+    .then(r => r.json()).then(state => {
+    _livePanel = state.panel;
+    _liveSong  = state.song || '';
+    _liveChunk = state.chunk_at || 0;
+    if (_livePaused && !first) return;
     if (state.panel === 'clock') return _liveClock(state);
     _liveStopBlink();
     _liveKey = '';

@@ -135,6 +135,8 @@ header {
 }
 #power-btn .ico { width: 16px; height: 16px; }
 #power-btn:hover, #mode-btn:hover { filter: brightness(1.2); }
+#mode-btn:disabled { cursor: default; }
+#mode-btn:disabled:hover { filter: none; }
 #power-btn.off { color: var(--red); }
 
 /* the ring carries the link state, the glyph stays the power state. both colours
@@ -718,6 +720,21 @@ body.display-off .pgrid-tile.active,
 body.display-off .pgrid-tile.held {
   animation: none; border-color: var(--border); color: var(--muted); background: var(--card);
 }
+/* the colour leaves slowly. going dark is the display winding down, and at the hover speed
+   the whole page blinks instead. only this way round, coming back should read as alive */
+body.display-off .panel-ico, body.display-off .pgrid-tile, body.display-off #mode-btn {
+  transition: color .7s ease, border-color .7s ease, background-color .7s ease;
+}
+
+/* the twin is no more live than the mirror is, so it says so too, over its own drawing */
+.bp-off {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity .7s ease, visibility .7s;
+}
+.bp-off b { font-size: 4.4cqw; color: var(--muted-hi); }
+body.display-off .bp-off { opacity: 1; visibility: visible; }
 
 /* the tools sit on the dimmed ground, never on top of the panel */
 #bp-full-tools {
@@ -758,7 +775,26 @@ body.display-off .pgrid-tile.held {
 .pv-stage {
   flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
 }
-.pv-stage > .blueprint { width: 90%; }
+.pv-stage > .blueprint, .pv-stage > .flip { width: 90%; }
+/* the viewer turns by its Source row alone, so the tile neither leans to the pointer nor
+   offers itself to a click */
+#pv-flip { --flip-lean: 0; cursor: default; }
+
+/* the display side can drive the display, so it carries the four panels as a square and the
+   way back to the scheduler beside them */
+#pv-trig-row { display: none; }
+.pv-body.src-display #pv-trig-row { display: flex; }
+.pv-trig { display: flex; align-items: center; gap: 10px; }
+.pv-trig-grid { display: grid; grid-template-columns: repeat(2, 30px); gap: 4px; }
+.pv-trig-btn {
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 700;
+  transition: all .15s;
+}
+.pv-trig-btn:hover { border-color: var(--accent); color: var(--text); }
+.pv-trig-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pv-trig-btn .ico { width: 15px; height: 15px; }
 /* the two float over the stage and ride along with the drawer edge */
 /* the page is drawn under the notch, so the two keep clear of it themselves */
 #pv-burger, #pv-freeze {
@@ -816,6 +852,15 @@ body.display-off .pgrid-tile.held {
   right: calc(14px + env(safe-area-inset-right) + var(--pv-side));
 }
 #pv-menu .row:last-child { border-bottom: none; }
+/* nothing on the display can be styled from here, so the editor goes behind glass rather
+   than away: it stays legible as the thing that is unavailable, and it stops scrolling */
+#pv-off-note { display: none; justify-content: center; color: var(--muted); font-size: 12px; }
+.pv-body.src-display #pv-off-note { display: flex; }
+.pv-body.src-display #pv-show-row { display: none; }
+.pv-body.src-display #pv-custom {
+  filter: blur(3px); opacity: .55; pointer-events: none; user-select: none;
+  max-height: 30dvh; overflow: hidden;
+}
 /* a fold ends a group, the row above its edge keeps its line */
 #pv-menu .pv-fold-in .row:last-child { border-bottom: 1px solid var(--border); }
 .modal-title .ico { flex-shrink: 0; color: var(--text); }
@@ -827,6 +872,8 @@ body.display-off .pgrid-tile.held {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .ex-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* the dialog never asks which side it is exporting, it says which one it is */
+.ex-source { color: var(--text); font-weight: 600; }
 /* the way to the other page is an offer, not a footnote, so it reads at row size */
 .ex-more {
   padding: 15px 16px; gap: 10px; text-decoration: none;

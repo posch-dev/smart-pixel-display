@@ -20,6 +20,7 @@ import assets.system.scheduler as scheduler
 import assets.system.webhooks as webhooks
 import assets.system.updates as updates
 import assets.system.visualize as visualize
+import threading
 import calendar_store
 import weather as weather_mod
 
@@ -142,6 +143,79 @@ def web_static(filename):
     return resp
 
 
+# a panel draws its picture the way the display hangs, so anything leaving for a file has to
+# be turned back. only the pi can do that to a gif: a browser has no decoder for one
+def _gif_upright(data: bytes, width: int = 0) -> bytes:
+    import io
+    from PIL import Image
+    picture = Image.open(io.BytesIO(data))
+    frames, base = [], None
+    for number in range(getattr(picture, "n_frames", 1)):
+        picture.seek(number)
+        frame = config.apply_orientation(picture.convert("RGB"))
+        if width:
+            frame = frame.resize((width, round(width * frame.height / frame.width)), Image.NEAREST)
+        base = base or frame.quantize(colors=256, method=2)
+        frames.append(frame.quantize(palette=base, dither=Image.Dither.NONE))
+    buffer = io.BytesIO()
+    frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:], loop=0,
+                   duration=picture.info.get("duration", 100), optimize=False)
+    return buffer.getvalue()
+
+
+# the whole song is the only export the pi has to draw for, so it happens when one asks and
+# never before. the chunks the display was already given are used as they are
+_song_job = {"running": False, "done": 0, "total": 0, "gif": b"", "error": "", "key": ""}
+
+
+def _song_progress() -> dict:
+    return {k: _song_job[k] for k in ("running", "done", "total", "error", "key")} | {
+        "ready": bool(_song_job["gif"]) and not _song_job["running"]}
+
+
+def _render_song(found: dict, key: str = "") -> None:
+    import io
+    from PIL import Image
+    display = getattr(sys.modules.get("panels.now_playing.main"), "display", None)
+    if display is None:
+        _song_job.update(running=False, error="the nowplaying panel is not loaded")
+        return
+    state   = dict(found["state"] or {})
+    every   = found.get("chunk_s") or 20.0
+    total   = max(1, int((state.get("duration_s") or 200) / every + 0.999))
+    _song_job.update(running=True, done=0, total=total, gif=b"", error="", key=key)
+    try:
+        frames, base = [], None
+        for index in range(total):
+            at    = round(index * every, 1)
+            chunk = found["chunks"].get(at)
+            if chunk is None:
+                chunk = display.generate_gif(dict(state, elapsed_s=index * every))
+            picture = Image.open(io.BytesIO(chunk))
+            loop = []
+            for number in range(getattr(picture, "n_frames", 1)):
+                picture.seek(number)
+                frame = config.apply_orientation(picture.convert("RGB"))
+                base  = base or frame.quantize(colors=256, method=2)
+                loop.append(frame.quantize(palette=base, dither=Image.Dither.NONE))
+            # the display loops a chunk until the next one is due, so the file has to as
+            # well, or the track runs by in seconds and the playhead jumps
+            repeats = max(1, round(every / (len(loop) * display.FRAME_MS / 1000)))
+            frames += loop * repeats
+            _song_job["done"] = index + 1
+        if not frames:
+            raise ValueError("nothing to write")
+        buffer = io.BytesIO()
+        frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:],
+                       loop=0, duration=display.FRAME_MS, optimize=False)
+        _song_job["gif"] = buffer.getvalue()
+    except Exception as error:
+        log.error("web", f"song render failed: {error}")
+        _song_job["error"] = str(error)
+    finally:
+        _song_job["running"] = False
+
+
 @app.get("/status")
 def get_status():
     global _seen_at
@@ -162,6 +236,9 @@ def get_status():
 def live_state():
     global _seen_at
     _seen_at = time.time()
+    # one tab is one viewer, and this poll is its heartbeat: a paused one holds its song
+    visualize.seen_viewer(request.args.get("viewer", ""), request.args.get("paused") == "1",
+                          request.args.get("song", ""))
     return jsonify(visualize.live_state()), 200
 
 
@@ -172,6 +249,48 @@ def live_frame():
     if not data:
         return jsonify({"error": "nothing on the display yet"}), 404
     return Response(data, mimetype=mime, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/live/song")
+def live_song_start():
+    want = request.args.get("key", "") or visualize.live_state()["song"]
+    if _song_job["running"]:
+        # one render at a time, and never hand somebody the file another track is writing
+        if _song_job["key"] == want:
+            return jsonify({"ok": True, **_song_progress()}), 200
+        return jsonify({"ok": False, "error": "another song is being rendered"}), 409
+    found = visualize.song(want)
+    if not found:
+        return jsonify({"ok": False, "error": "that song is no longer on the pi"}), 404
+    threading.Thread(target=_render_song, args=(found, want), daemon=True).start()
+    return jsonify({"ok": True}), 200
+
+
+@app.get("/live/song/status")
+def live_song_status():
+    return jsonify(_song_progress()), 200
+
+
+@app.get("/live/chunk")
+def live_chunk():
+    # the chunk a paused tab is holding, which is not the one the display has moved on to.
+    # no key and no at means the one on screen
+    at   = request.args.get("at")
+    data = visualize.song_chunk(request.args.get("key", ""),
+                                float(at) if at is not None else visualize.chunk_now())
+    if not data:
+        return jsonify({"error": "that chunk is gone"}), 404
+    if request.args.get("upright") == "1" or request.args.get("w"):
+        data = _gif_upright(data, int(request.args.get("w") or 0))
+    return Response(data, mimetype="image/gif", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/live/song.gif")
+def live_song_gif():
+    if not _song_job["gif"]:
+        return jsonify({"error": "nothing rendered"}), 404
+    return Response(_song_job["gif"], mimetype="image/gif",
+                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/config")

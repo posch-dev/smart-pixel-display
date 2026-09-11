@@ -26,35 +26,71 @@
   </button>
   <div class="card-title">Preview<span class="pv-note">This page only</span></div>
   <div class="row">
+    <div class="row-left"><div class="row-label">Source</div>
+      <div class="row-sub" id="pv-source-why"></div></div>
+    <div class="row-right"><div class="seg">
+      <button onclick="setPvSource('twin')" id="pv-source-twin">Twin</button>
+      <button onclick="setPvSource('display')" id="pv-source-display">Display</button>
+    </div></div>
+  </div>
+  <div class="row" id="pv-trig-row">
+    <div class="row-left"><div class="row-label">Trigger</div>
+      <div class="row-sub">Hold one panel, or hand it back</div></div>
+    <div class="row-right pv-trig">
+      <button class="pv-undo" id="pv-trig-undo" onclick="pvAuto()" disabled
+              title="Back to the scheduler">
+        <svg class="ico"><use href="#ico-undo"/></svg>
+      </button>
+      <div class="pv-trig-grid">
+        <button class="pv-trig-btn" id="pv-trig-clock" onclick="pvTrigger('clock')" title="Clock">
+          <svg class="ico"><use href="#ico-clock"/></svg></button>
+        <button class="pv-trig-btn" id="pv-trig-dashboard" onclick="pvTrigger('dashboard')" title="Dashboard">
+          <svg class="ico"><use href="#ico-calendar"/></svg></button>
+        <button class="pv-trig-btn" id="pv-trig-nowplaying" onclick="pvTrigger('nowplaying')" title="NowPlaying">
+          <svg class="ico"><use href="#ico-music"/></svg></button>
+        <button class="pv-trig-btn" id="pv-trig-verse_of_day" onclick="pvTrigger('verse_of_day')" title="Verse">
+          <svg class="ico"><use href="#ico-cross"/></svg></button>
+      </div>
+    </div>
+  </div>
+  <div class="row" id="pv-show-row">
     <div class="row-left"><div class="row-label">Show</div></div>
     <div class="row-right"><select id="pv-follow" onchange="setPvFollow(this.value)">
-      <option value="live">Live Display</option>
+      <option value="live">Follow Display</option>
       <option value="clock">Clock</option>
       <option value="verse_of_day">Verse</option>
       <option value="nowplaying">NowPlaying</option>
       <option value="dashboard">Dashboard</option>
     </select></div>
   </div>
-  <div class="card-title">Twin Appearance</div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Theme</div></div>
-    <div class="row-right"><div class="seg">
-      <button onclick="setPvTheme('dark')" id="pv-theme-dark">Dark</button>
-      <button onclick="setPvTheme('light')" id="pv-theme-light">Light</button>
-    </div></div>
+  <div class="row" id="pv-off-note">Not available with the live display</div>
+  <div id="pv-custom">
+    <div class="card-title">Twin Appearance</div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Theme</div></div>
+      <div class="row-right"><div class="seg">
+        <button onclick="setPvTheme('dark')" id="pv-theme-dark">Dark</button>
+        <button onclick="setPvTheme('light')" id="pv-theme-light">Light</button>
+      </div></div>
+    </div>
+    <div class="row">
+      <div class="row-left"><div class="row-label">Accent</div></div>
+      <div class="row-right"><input type="color" id="pv-accent" oninput="setPvAccent(this.value)"></div>
+    </div>
+    <div id="pv-colors"></div>
+    <div id="pv-panels"></div>
   </div>
-  <div class="row">
-    <div class="row-left"><div class="row-label">Accent</div></div>
-    <div class="row-right"><input type="color" id="pv-accent" oninput="setPvAccent(this.value)"></div>
-  </div>
-  <div id="pv-colors"></div>
-  <div id="pv-panels"></div>
 </div>
 
 <div class="pv-stage">
-  <div class="blueprint" id="home-blueprint">
-    <div class="blueprint-inner" id="blueprint-content"></div>
-    <div class="dot-raster"></div>
+  <div class="flip" id="pv-flip">
+    <div class="flip-faces">
+      <div class="blueprint flip-front" id="home-blueprint">
+        <div class="blueprint-inner" id="blueprint-content"></div>
+        <div class="dot-raster"></div>
+      </div>
+      <div class="blueprint flip-back live-face" id="pv-live"></div>
+    </div>
   </div>
 </div>
 
@@ -64,6 +100,7 @@
 <script src="lib/blueprint.js"></script>
 <script src="lib/export-render.js"></script>
 <script src="lib/export-gif.js"></script>
+<script src="lib/live.js"></script>
 <script src="lib/export.js"></script>
 <script src="pages/preview.js"></script>
 </body>

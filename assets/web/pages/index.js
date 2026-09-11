@@ -862,6 +862,13 @@ function setHomeFlip(on) {
   liveShowOff(_liveBlockedBy());
 }
 
+// the twin says which of the two reasons it is, the same words the live side uses
+function paintTwinOff(reason) {
+  const el = document.getElementById('home-off');
+  if (el) el.firstElementChild.textContent =
+    reason === 'nolink' ? 'No display connected' : 'Display is off';
+}
+
 // the canned walk names the state it is on, the tiles are where it belongs
 function paintVizLabel(state) {
   const el = document.getElementById('viz-label');
@@ -885,6 +892,9 @@ async function loadStatus() {
     paintVizLabel(statusData);
     if (statusData.visualize && !_vizEntered) enterVisualizer();
     document.body.classList.toggle('display-off', !_liveReachable());
+    paintTwinOff(_liveBlockedBy());
+    // a dark display has no panel to hold, so the mode button has nothing to switch
+    document.getElementById('mode-btn').disabled = !statusData.display_on;
     if (_homeFlipped) liveShowOff(_liveBlockedBy());
     _linkUp   = !!statusData.connected;
     _retrying = !!statusData.reconnecting;

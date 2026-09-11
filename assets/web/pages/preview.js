@@ -6,7 +6,7 @@ const PV_MODES = ['clock', 'verse_of_day', 'nowplaying', 'dashboard'];
 const PV_LABELS = {clock: 'Clock', verse_of_day: 'Verse', nowplaying: 'NowPlaying', dashboard: 'Dashboard'};
 
 let cfg = {};
-let pv = {follow: 'live', theme: null, accent: null, panels: {},
+let pv = {source: 'twin', trig: null, follow: 'live', theme: null, accent: null, panels: {},
           on: {raster: true, glow: true, album: true, trans: true, date: true,
                ddate: true, ddiv: true, dextra: true, dwhen: true, dblink: true,
                dacce: true, dacct: true},
@@ -48,6 +48,59 @@ function setPvAccent(hex) {
   paintPvFavicon();
 }
 
+// twin or the frames the display was really given. the export asks through this, and until
+// the display side of the stage exists that is all it decides
+function pvSource() {
+  return pv.source;
+}
+
+// empty when the mirror can show something, otherwise which of the two reasons it is
+function _pvBlockedBy(data) {
+  if (!data || !data.connected) return 'nolink';
+  return data.display_on ? '' : 'off';
+}
+
+// the display side can drive the display: one panel held, or the scheduler back in charge.
+// the square shows what was pressed here, which is not the same as what happens to be up
+async function pvTrigger(mode) {
+  pv.trig = mode;
+  paintPvTrigger();
+  await fetch('/mode/reset', {method: 'POST'});
+  await fetch(`/mode/trigger/${mode}`, {method: 'POST'});
+}
+
+async function pvAuto() {
+  pv.trig = null;
+  paintPvTrigger();
+  await fetch('/mode/reset', {method: 'POST'});
+}
+
+function paintPvTrigger() {
+  for (const m of PV_MODES) {
+    const button = document.getElementById('pv-trig-' + m);
+    if (button) button.classList.toggle('on', m === pv.trig);
+  }
+  document.getElementById('pv-trig-undo').disabled = !pv.trig;
+}
+
+function setPvSource(which) {
+  pv.source = which;
+  document.getElementById('pv-source-twin').classList.toggle('on', which === 'twin');
+  document.getElementById('pv-source-display').classList.toggle('on', which === 'display');
+  document.getElementById('pv-source-why').textContent =
+    which === 'display' ? 'Export takes the display frames, while it shows this panel' : '';
+  // nothing on the display can be styled from here, so the whole editor goes behind glass
+  document.body.classList.toggle('src-display', which === 'display');
+  const face = document.getElementById('pv-live');
+  document.getElementById('pv-flip').classList.toggle('flipped', which === 'display');
+  if (which !== 'display') return liveStop();
+  if (!face.children.length) face.innerHTML = liveFaceHtml();
+  liveStart(face);
+  livePause(_pvFrozen);
+  liveShowOff(_pvBlockedBy(_pvLast));
+}
+
+
 function setPvFollow(what) {
   pv.follow = what;
   buildPvPanels();
@@ -64,7 +117,15 @@ function togglePvFreeze() {
   btn.title = _pvFrozen ? 'Resume Preview' : 'Pause Preview';
   btn.classList.toggle('on', _pvFrozen);
   document.getElementById('pv-follow').disabled = _pvFrozen;
+  if (pv.source === 'display') livePause(_pvFrozen);
   if (!_pvFrozen) pollPreview();
+}
+
+// the export dialog holds the page while it stands, and the button has to say so
+function pvHeld() { return _pvFrozen; }
+
+function pvHold(on) {
+  if (_pvFrozen !== on) togglePvFreeze();
 }
 
 // card and grain sit on the tile so the menu keeps the theme, the ground has to be the
@@ -557,6 +618,9 @@ function pollPreview() {
   if (exFrozen() || _pvFrozen) return;
   fetch('/home').then(r => r.json()).then(data => {
     _pvLast = data;
+    // the twin goes on following underneath, or the panel it stands on goes stale behind the
+    // live side and the page comes back holding the wrong one
+    if (pv.source === 'display') liveShowOff(_pvBlockedBy(data));
     if (pv.follow !== 'live') data = Object.assign({}, data, {active_mode: pv.follow});
     updateBlueprint(data);
     if (data.active_mode !== _pvActive) {
@@ -579,6 +643,7 @@ async function initPreview() {
   setPvTheme(pv.theme || getCookie('spd_theme') || 'dark');
   setPvAccent(pv.accent || getCookie('spd_accent') || DEFAULT_ACCENT);
   _applyPvPreviewMode(getCookie('spd_preview') || 'web');
+  setPvSource(pv.source);
   applyPvColOn();
   applyPvColors();
   buildPvColors();
